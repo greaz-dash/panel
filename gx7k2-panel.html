@@ -391,26 +391,22 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
 
     <div class="panel" id="panel-workflow">
       <div class="toolbar">
+        <input class="search-input" type="text" id="wf-search" placeholder="🔍 Nom, téléphone, ville..." oninput="renderWorkflow()">
         <button class="tool-btn" onclick="loadWorkflow()">🔄 Rafraîchir</button>
         <button class="tool-btn green" onclick="openWorkflowForm()">➕ Nouveau prospect</button>
-        <select id="wf-filter-status" onchange="renderWorkflow()" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit;background:white">
-          <option value="">Tous les statuts</option>
-          <option value="a_contacter">🆕 À contacter</option>
-          <option value="en_discussion">💬 En discussion</option>
-          <option value="a_rappeler">📞 À rappeler</option>
-          <option value="en_attente">⏳ En attente</option>
-          <option value="rdv_pris">📅 RDV pris</option>
-          <option value="converti">✅ Converti</option>
-          <option value="pas_interesse">❌ Pas intéressé</option>
-        </select>
-        <select id="wf-filter-type" onchange="renderWorkflow()" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit;background:white">
-          <option value="">Tous les types</option>
-          <option value="client">🔧 Client</option>
-          <option value="garage">🏪 Garage / Mécanicien</option>
-        </select>
         <select id="wf-filter-owner" onchange="renderWorkflow()" style="display:none;padding:8px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit;background:white">
           <option value="">Toute l'équipe</option>
         </select>
+      </div>
+      <div class="toolbar" style="margin-top:0">
+        <button class="filter-btn act" id="wfchip-all" onclick="wfFilter('',this)">Tous</button>
+        <button class="filter-btn" onclick="wfFilter('a_contacter',this)">🆕 À contacter</button>
+        <button class="filter-btn" onclick="wfFilter('en_discussion',this)">💬 En discussion</button>
+        <button class="filter-btn" onclick="wfFilter('a_rappeler',this)">📞 À rappeler</button>
+        <button class="filter-btn" onclick="wfFilter('en_attente',this)">⏳ En attente</button>
+        <button class="filter-btn" onclick="wfFilter('rdv_pris',this)">📅 RDV pris</button>
+        <button class="filter-btn" onclick="wfFilter('converti',this)">✅ Convertis</button>
+        <button class="filter-btn" onclick="wfFilter('pas_interesse',this)">❌ Pas intéressé</button>
       </div>
       <div id="wf-header" class="section-title">🗂 Mes prospects</div>
       <div id="workflow-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
@@ -2073,6 +2069,7 @@ function renderTeam(){
       +'</div></div>'
       +(isMe ? '' :
         '<div class="directory-actions" style="flex-wrap:wrap">'
+        +'<button class="abtn" style="background:#FEF3C7;border-color:#FCD34D;color:#92400E;font-size:12px;font-weight:700" onclick="viewMemberWork(\''+m.email+'\',\''+(m.name||m.email)+'\')">🗂 Voir son travail</button>'
         +'<button class="abtn" style="background:var(--bluelt);border-color:var(--bluebdr);color:var(--blue2);font-size:12px" onclick="changeRole(\''+m.uid+'\')">🔄 Changer le rôle</button>'
         +'<button class="abtn abtn-del" style="font-size:12px" onclick="removeTeamMember(\''+m.uid+'\')">🗑 Retirer l\'accès</button>'
         +'</div>')
@@ -2206,7 +2203,16 @@ function removeTeamMember(uid){
 
 /* ══════════ WORKFLOW / CRM D'ÉQUIPE ══════════ */
 var _workflow = [];
+var _wfStatusFilter = ''; // pastille de statut active
 var _viewingMemberUid = null; // si le fondateur regarde le travail d'un membre précis
+
+function wfFilter(status, btn){
+  _wfStatusFilter = status;
+  var toolbar = btn.parentElement;
+  toolbar.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.remove('act'); });
+  btn.classList.add('act');
+  renderWorkflow();
+}
 
 var WF_STATUS = {
   a_contacter:   { icon:'🆕', label:'À contacter',   color:'#0F2ACC', bg:'#EEF1FF' },
@@ -2244,9 +2250,9 @@ function loadWorkflow(){
 function renderWorkflow(){
   var el = document.getElementById('workflow-list');
   var header = document.getElementById('wf-header');
-  var fStatus = document.getElementById('wf-filter-status').value;
-  var fType = document.getElementById('wf-filter-type').value;
-  var fOwner = isFounder() ? document.getElementById('wf-filter-owner').value : '';
+  var fStatus = _wfStatusFilter;
+  var search = (document.getElementById('wf-search') ? document.getElementById('wf-search').value : '').toLowerCase().trim();
+  var fOwner = isFounder() && document.getElementById('wf-filter-owner') ? document.getElementById('wf-filter-owner').value : '';
 
   var list = _workflow.slice();
 
@@ -2265,7 +2271,12 @@ function renderWorkflow(){
   }
 
   if(fStatus) list = list.filter(function(w){ return w.status === fStatus; });
-  if(fType) list = list.filter(function(w){ return w.prospect_type === fType; });
+  if(search){
+    list = list.filter(function(w){
+      var hay = ((w.name||'')+(w.phone||'')+(w.city||'')+(w.email||'')+(w.address||'')).toLowerCase();
+      return hay.indexOf(search) !== -1;
+    });
+  }
 
   document.getElementById('tb8').textContent = isFounder()
     ? _workflow.length
@@ -2283,7 +2294,7 @@ function renderWorkflow(){
   });
 
   if(!list.length){
-    el.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:1.5rem 0;text-align:center">Aucun prospect'+(fStatus||fType?' pour ce filtre':'')+'. Clique "➕ Nouveau prospect" pour commencer.</div>';
+    el.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:1.5rem 0;text-align:center">Aucun prospect'+(fStatus||search?' pour ce filtre':'')+'. Clique "➕ Nouveau prospect" pour commencer.</div>';
     return;
   }
 
@@ -2501,6 +2512,25 @@ function deleteWorkflow(id){
   db.collection('workflow').doc(id).delete()
     .then(function(){ document.getElementById('wf-detail-modal').remove(); loadWorkflow(); })
     .catch(function(e){ alert('Erreur : '+e.message); });
+}
+
+function viewMemberWork(email, name){
+  // Bascule vers l'onglet Workflow, filtré sur ce membre
+  switchTab('workflow');
+  var sel = document.getElementById('wf-filter-owner');
+  if(sel){
+    sel.style.display = '';
+    // S'assure que l'option existe
+    var found = false;
+    for(var i=0;i<sel.options.length;i++){ if(sel.options[i].value===email){ found=true; break; } }
+    if(!found){
+      var opt = document.createElement('option');
+      opt.value = email; opt.textContent = name;
+      sel.appendChild(opt);
+    }
+    sel.value = email;
+  }
+  renderWorkflow();
 }
 
 /* ══════════ EXPORT CSV ══════════ */
