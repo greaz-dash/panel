@@ -1,0 +1,2548 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Greaz — Gestion</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --blue:#1A3CFF;--blue2:#0F2ACC;--bluelt:#EEF1FF;--bluebdr:#BFDBFE;
+  --ink:#0A0C1B;--ink2:#1C2040;--muted:#6B7280;
+  --surface:#F5F6FA;--white:#fff;--border:#E5E7EB;
+  --green:#059669;--greenlt:#ECFDF5;--greenbdr:#6EE7B7;
+  --orange:#D97706;--orangelt:#FFFBEB;--orangebdr:#FCD34D;
+  --red:#DC2626;--redlt:#FEF2F2;--redbdr:#FCA5A5;
+  --purple:#7C3AED;--purplelt:#EDE9FE;--purplebdr:#C4B5FD;
+  --pink:#DB2777;--pinklt:#FDF2F8;--pinkbdr:#F9A8D4;
+  --teal:#0891B2;--teallt:#ECFEFF;--tealbdr:#67E8F9;
+  --r:8px;--r2:14px;--r3:20px;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink);min-height:100vh;}
+
+/* LOGIN */
+.login-screen{display:none;min-height:100vh;align-items:center;justify-content:center;background:var(--ink);padding:2rem;}
+.login-screen.show{display:flex;}
+.login-box{background:var(--ink2);border:1px solid rgba(255,255,255,.08);border-radius:var(--r3);padding:2.5rem;width:100%;max-width:360px;text-align:center;}
+.login-logo{font-family:'Bricolage Grotesque',sans-serif;font-size:2rem;font-weight:800;color:white;margin-bottom:.25rem;}
+.login-logo span{color:var(--blue);}
+.login-sub{font-size:13px;color:rgba(255,255,255,.4);margin-bottom:2rem;}
+.login-input{width:100%;padding:12px 16px;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.1);border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:16px;color:white;outline:none;text-align:center;letter-spacing:.2em;margin-bottom:1rem;transition:border-color .2s;}
+.login-input:focus{border-color:var(--blue);}
+.login-input.shake{animation:shake .3s ease;}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+.login-btn{width:100%;padding:12px;background:var(--blue);color:white;border:none;border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;cursor:pointer;transition:background .2s;}
+.login-btn:hover{background:var(--blue2);}
+.login-err{color:#fca5a5;font-size:13px;margin-top:.75rem;display:none;}
+
+/* APP */
+.app{display:none;min-height:100vh;flex-direction:column;}
+.app.show{display:flex;}
+
+/* HEADER */
+.header{background:var(--ink);padding:.85rem 1.25rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.header-logo{font-family:'Bricolage Grotesque',sans-serif;font-size:1.2rem;font-weight:800;color:white;}
+.header-logo span{color:var(--blue);}
+.header-right{display:flex;align-items:center;gap:10px;}
+.htime{font-size:11px;color:rgba(255,255,255,.35);}
+.header-btn{font-size:12px;font-weight:600;padding:5px 12px;border-radius:var(--r);border:none;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s;}
+.btn-export{background:rgba(26,60,255,.25);color:#93BBFD;}
+.btn-export:hover{background:rgba(26,60,255,.4);}
+.logout-btn{background:none;border:none;font-size:12px;color:rgba(255,255,255,.35);cursor:pointer;font-family:'DM Sans',sans-serif;}
+.logout-btn:hover{color:white;}
+
+/* STATS */
+.stats-bar{background:white;border-bottom:1px solid var(--border);padding:.65rem 1.25rem;display:flex;gap:1.25rem;overflow-x:auto;flex-shrink:0;}
+.stat{display:flex;align-items:center;gap:7px;flex-shrink:0;}
+.sdot{width:7px;height:7px;border-radius:50%;}
+.slabel{font-size:11px;color:var(--muted);}
+.sval{font-size:14px;font-weight:700;color:var(--ink);}
+
+/* TABS */
+.tabs{background:white;border-bottom:1px solid var(--border);padding:0 1.25rem;display:flex;flex-shrink:0;overflow-x:auto;}
+.tab{padding:11px 16px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;display:flex;align-items:center;gap:7px;white-space:nowrap;}
+.tab.act{color:var(--blue);border-bottom-color:var(--blue);font-weight:600;}
+.tbadge{background:var(--red);color:white;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;min-width:18px;text-align:center;}
+.tbadge.blue{background:var(--blue);}
+.tbadge.orange{background:var(--orange);}
+.tbadge.purple{background:var(--purple);}
+
+/* CONTENT */
+.content{flex:1;padding:1rem 1.25rem;overflow-y:auto;}
+.panel{display:none;}
+.panel.act{display:block;}
+
+/* TOOLBAR */
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:.875rem;flex-wrap:wrap;}
+.filter-btn{padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid var(--border);background:white;color:var(--muted);white-space:nowrap;transition:all .2s;}
+.filter-btn.act{background:var(--ink);color:white;border-color:var(--ink);}
+.tool-btn{padding:6px 12px;border-radius:var(--r);font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid var(--bluebdr);background:var(--bluelt);color:var(--blue2);white-space:nowrap;font-family:'DM Sans',sans-serif;}
+.tool-btn:hover{background:#DBEAFE;}
+.tool-btn.green{border-color:var(--greenbdr);background:var(--greenlt);color:var(--green);}
+.tool-btn.green:hover{background:#D1FAE5;}
+.search-input{flex:1;min-width:160px;padding:6px 12px;border:1.5px solid var(--border);border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:13px;color:var(--ink);outline:none;background:white;}
+.search-input:focus{border-color:var(--blue);}
+
+/* CARDS */
+.cards{display:flex;flex-direction:column;gap:8px;}
+.card{background:white;border-radius:var(--r2);border:1.5px solid var(--border);overflow:hidden;transition:all .2s;}
+.card:hover{border-color:#d1d5db;box-shadow:0 2px 12px rgba(0,0,0,.06);}
+.card.urgent{border-left:4px solid var(--red);}
+.card.en-cours{border-left:4px solid var(--orange);}
+.card.rappel{border-left:4px solid var(--purple);}
+.card.discussion{border-left:4px solid var(--teal);}
+.card.assigne{border-left:4px solid var(--blue);}
+.card.paye{border-left:4px solid #16a34a;}
+.card.traite{border-left:4px solid var(--green);opacity:.75;}
+.card.annule{border-left:4px solid #9ca3af;opacity:.6;}
+.card.en_attente{border-left:4px solid var(--orange);}
+.card.confirme{border-left:4px solid var(--blue);}
+.card.termine{border-left:4px solid var(--green);opacity:.8;}
+.card.refuse{border-left:4px solid #9ca3af;opacity:.6;}
+
+.card-top{padding:12px 14px;display:flex;align-items:flex-start;gap:10px;cursor:pointer;}
+.card-main{flex:1;min-width:0;}
+.card-name{font-size:14px;font-weight:700;margin-bottom:2px;}
+.card-meta{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.card-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0;}
+
+/* STATUS BADGES */
+.sbadge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap;}
+.s-nouveau{background:#F3F4F6;color:#374151;}
+.s-urgent{background:var(--redlt);color:var(--red);border:1px solid var(--redbdr);}
+.s-en-cours{background:var(--orangelt);color:var(--orange);border:1px solid var(--orangebdr);}
+.s-rappel{background:var(--purplelt);color:var(--purple);border:1px solid var(--purplebdr);}
+.s-discussion{background:var(--teallt);color:var(--teal);border:1px solid var(--tealbdr);}
+.s-assigne{background:var(--bluelt);color:var(--blue2);border:1px solid var(--bluebdr);}
+.s-paye{background:#F0FDF4;color:#15803D;border:1px solid #86EFAC;}
+.s-traite{background:var(--greenlt);color:var(--green);border:1px solid var(--greenbdr);}
+.s-annule{background:#F3F4F6;color:#9CA3AF;border:1px solid #E5E7EB;}
+
+.ubadge{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;}
+.u-asap{background:var(--redlt);color:var(--red);}
+.u-24h{background:var(--orangelt);color:var(--orange);}
+.u-date{background:var(--bluelt);color:var(--blue2);}
+
+.source-badge{font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:var(--purplelt);color:var(--purple);border:1px solid var(--purplebdr);}
+
+.tags-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;}
+.tag{font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--muted);}
+.tag-blue{background:var(--bluelt);color:var(--blue2);border-color:var(--bluebdr);}
+.tag-green{background:var(--greenlt);color:var(--green);border-color:var(--greenbdr);}
+.tag-orange{background:var(--orangelt);color:var(--orange);border-color:var(--orangebdr);}
+
+/* EXPANDED */
+.card-body{display:none;padding:0 14px 14px;border-top:1px solid #F3F4F6;}
+.card-body.open{display:block;}
+
+.info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;padding-top:12px;margin-bottom:12px;}
+.info-item .il{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px;}
+.info-item .iv{font-size:13px;color:var(--ink);}
+.info-item .iv a{color:var(--blue);text-decoration:none;font-weight:600;}
+
+/* STATUS SELECTOR */
+.status-selector{margin-bottom:12px;}
+.status-selector-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;}
+.status-btns{display:flex;flex-wrap:wrap;gap:6px;}
+.st-btn{padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid var(--border);background:white;color:var(--muted);transition:all .2s;font-family:'DM Sans',sans-serif;}
+.st-btn:hover{border-color:var(--ink);color:var(--ink);}
+.st-btn.act-st{background:var(--ink);color:white;border-color:var(--ink);}
+
+/* NOTES */
+.notes-section{margin-bottom:12px;}
+.notes-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;}
+.notes-list{display:flex;flex-direction:column;gap:6px;margin-bottom:8px;}
+.note-item{background:var(--surface);border-radius:var(--r);padding:8px 10px;font-size:12px;line-height:1.5;}
+.note-meta{font-size:10px;color:var(--muted);margin-top:3px;}
+.note-input-row{display:flex;gap:8px;}
+.note-input{flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:13px;color:var(--ink);outline:none;resize:none;}
+.note-input:focus{border-color:var(--blue);}
+.note-add-btn{padding:8px 14px;background:var(--ink);color:white;border:none;border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;}
+
+/* ACTIONS */
+.action-btns{display:flex;flex-wrap:wrap;gap:6px;}
+.abtn{padding:7px 13px;border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid transparent;text-decoration:none;display:inline-flex;align-items:center;gap:5px;transition:all .2s;}
+.abtn-call{background:var(--ink);color:white;border-color:var(--ink);}
+.abtn-call:hover{background:#0a0c20;}
+.abtn-sms{background:var(--greenlt);border-color:var(--greenbdr);color:var(--green);}
+.abtn-email{background:var(--bluelt);border-color:var(--bluebdr);color:var(--blue2);}
+.abtn-del{background:var(--redlt);border-color:var(--redbdr);color:var(--red);margin-left:auto;}
+.abtn-link{background:var(--purplelt);border-color:var(--purplebdr);color:var(--purple);}
+
+/* REVIEW LINK BOX */
+.review-link-box{background:#F0FDF4;border:1.5px solid var(--greenbdr);border-radius:var(--r);padding:10px 12px;margin-top:10px;}
+.review-link-label{font-size:11px;font-weight:700;color:var(--green);margin-bottom:6px;}
+.review-link-row{display:flex;gap:6px;align-items:center;}
+.review-link-input{flex:1;padding:7px 10px;border:1px solid var(--greenbdr);border-radius:6px;font-size:11px;font-family:monospace;background:white;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.review-copy-btn{padding:7px 12px;background:var(--green);color:white;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif;}
+
+/* EMPTY */
+.empty{text-align:center;padding:3rem 2rem;color:var(--muted);}
+.empty-icon{font-size:2.5rem;margin-bottom:.75rem;}
+
+/* SPINNER */
+.loading{text-align:center;padding:3rem;color:var(--muted);font-size:13px;}
+.spinner{display:inline-block;width:18px;height:18px;border:2px solid #e5e7eb;border-top-color:var(--blue);border-radius:50%;animation:sp .7s linear infinite;margin-right:6px;vertical-align:middle;}
+@keyframes sp{to{transform:rotate(360deg);}}
+@keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes slideOut{from{transform:translateX(0);opacity:1}to{transform:translateX(120%);opacity:0}}
+#notif-bell:hover{background:rgba(255,255,255,.15)!important}
+
+/* ANNUAIRE */
+.pending-row{background:white;border:1.5px solid var(--orangebdr);border-radius:var(--r2);padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.pending-info{font-size:13px;}
+.pending-info strong{display:block;font-size:14px;margin-bottom:2px;}
+.pending-info span{color:var(--muted);font-size:12px;}
+
+.directory-card{background:white;border:1.5px solid var(--border);border-radius:var(--r2);padding:12px 14px;margin-bottom:8px;}
+.directory-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+.directory-name{font-size:14px;font-weight:700;}
+.directory-meta{font-size:12px;color:var(--muted);margin-top:2px;}
+.directory-actions{display:flex;gap:6px;margin-top:10px;}
+
+.garage-form{background:white;border:1.5px solid var(--border);border-radius:var(--r2);padding:1.25rem;margin-bottom:1.25rem;}
+.garage-form h3{font-size:14px;font-weight:700;margin-bottom:1rem;}
+.gff{margin-bottom:.75rem;}
+.gff label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;}
+.gff input,.gff select,.gff textarea{width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:13px;color:var(--ink);outline:none;}
+.gff input:focus,.gff select:focus,.gff textarea:focus{border-color:var(--blue);}
+.gff2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+
+.section-title{font-size:13px;font-weight:700;color:var(--ink);margin:1.5rem 0 .75rem;display:flex;align-items:center;gap:6px;}
+.section-title:first-child{margin-top:0;}
+
+@media(max-width:600px){
+  .stats-bar{gap:.875rem;}
+  .content{padding:.875rem 1rem;}
+  .info-grid{grid-template-columns:1fr 1fr;}
+  .gff2{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<!-- CONTENEUR DE NOTIFICATIONS TEMPS RÉEL -->
+<div id="notif-container" style="position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:10px;max-width:360px"></div>
+
+<!-- LOGIN -->
+<div class="login-screen show" id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">Gre<span>az</span></div>
+    <div class="login-sub">Accès administrateur</div>
+    <input class="login-input" type="email" id="emailInput" placeholder="ton@courriel.com" autocomplete="username"
+      style="margin-bottom:10px" onkeydown="if(event.key==='Enter')document.getElementById('passInput').focus()">
+    <input class="login-input" type="password" id="passInput" placeholder="Mot de passe" autocomplete="current-password"
+      onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" id="login-btn" onclick="doLogin()">Se connecter →</button>
+    <div class="login-err" id="loginErr">Identifiants incorrects.</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:1rem;line-height:1.6">
+      🔒 Accès réservé aux administrateurs Greaz.
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="app" id="app">
+
+  <div class="header">
+    <div class="header-logo">Gre<span>az</span> <span style="font-size:12px;font-weight:400;color:rgba(255,255,255,.35);margin-left:6px">Gestion</span> <span style="font-size:10px;font-weight:700;color:#00C26F;background:rgba(0,194,111,.15);padding:2px 8px;border-radius:6px;margin-left:6px">v3.2 🗂</span></div>
+    <div class="header-right">
+      <span class="htime" id="htime"></span>
+      <button id="notif-bell" onclick="toggleNotifSound()" title="Activer/désactiver le son" style="position:relative;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;width:38px;height:38px;cursor:pointer;font-size:16px;color:white">🔔<span id="notif-badge" style="display:none;position:absolute;top:-6px;right:-6px;background:#dc2626;color:white;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:none;align-items:center;justify-content:center;padding:0 4px">0</span></button>
+      <span id="admin-email" style="font-size:11px;color:rgba(255,255,255,.4);margin-right:4px"></span>
+      <button class="header-btn btn-export" onclick="exportCSV()">⬇ CSV</button>
+      <button class="logout-btn" onclick="logout()">Déconnexion</button>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats-bar">
+    <div class="stat"><div class="sdot" style="background:#ef4444"></div><span class="slabel">Nouveaux</span><span class="sval" id="st1">—</span></div>
+    <div class="stat"><div class="sdot" style="background:#dc2626"></div><span class="slabel">Urgents</span><span class="sval" id="st2">—</span></div>
+    <div class="stat"><div class="sdot" style="background:#d97706"></div><span class="slabel">En cours</span><span class="sval" id="st3">—</span></div>
+    <div class="stat"><div class="sdot" style="background:#7c3aed"></div><span class="slabel">À rappeler</span><span class="sval" id="st4">—</span></div>
+    <div class="stat"><div class="sdot" style="background:#059669"></div><span class="slabel">Payés</span><span class="sval" id="st-paye">—</span></div>
+    <div class="stat"><div class="sdot" style="background:#16a34a"></div><span class="slabel">Traités</span><span class="sval" id="st5">—</span></div>
+    <div class="stat"><div class="sdot" style="background:#1A3CFF"></div><span class="slabel">Mécaniciens</span><span class="sval" id="st6">—</span></div>
+    <div class="stat"><div class="sdot" style="background:#D97706"></div><span class="slabel">RDV en attente</span><span class="sval" id="st7">—</span></div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <div class="tab act" id="tab-clients" onclick="switchTab('clients')">🔧 Clients <span class="tbadge" id="tb1">0</span></div>
+    <div class="tab" id="tab-mec" onclick="switchTab('mec')">👨‍🔧 Mécaniciens <span class="tbadge blue" id="tb2">0</span></div>
+    <div class="tab" id="tab-rdv" onclick="switchTab('rdv')">📅 Réservations <span class="tbadge orange" id="tb3">0</span></div>
+    <div class="tab" id="tab-annuaire" onclick="switchTab('annuaire')">📇 Annuaire <span class="tbadge purple" id="tb4">0</span></div>
+    <div class="tab" id="tab-claims" onclick="switchTab('claims')">✋ Revendications <span class="tbadge" id="tb5" style="background:#00C26F">0</span></div>
+    <div class="tab" id="tab-workflow" onclick="switchTab('workflow')">🗂 Workflow <span class="tbadge" id="tb8" style="background:#F59E0B">0</span></div>
+    <div class="tab" id="tab-affiliates" onclick="switchTab('affiliates')">🎯 Affiliés <span class="tbadge" id="tb6" style="background:#8B5CF6">0</span></div>
+    <div class="tab" id="tab-team" onclick="switchTab('team')" style="display:none">👥 Équipe <span class="tbadge" id="tb7" style="background:#0EA5E9">0</span></div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- CLIENTS -->
+    <div class="panel act" id="panel-clients">
+      <div class="toolbar">
+        <input class="search-input" type="text" placeholder="🔍 Nom, téléphone, problème..." oninput="searchLeads(this.value)">
+        <button class="tool-btn" onclick="loadLeads()">🔄 Rafraîchir</button>
+      </div>
+      <div class="toolbar" style="margin-top:0">
+        <button class="filter-btn act" onclick="filterLeads('all',this)">Tous</button>
+        <button class="filter-btn" onclick="filterLeads('nouveau',this)">🆕 Nouveaux</button>
+        <button class="filter-btn" onclick="filterLeads('urgent',this)">🚨 Urgents</button>
+        <button class="filter-btn" onclick="filterLeads('en-cours',this)">🔄 En cours</button>
+        <button class="filter-btn" onclick="filterLeads('rappel',this)">📞 Rappel</button>
+        <button class="filter-btn" onclick="filterLeads('discussion',this)">💬 En discussion</button>
+        <button class="filter-btn" onclick="filterLeads('assigne',this)">🔧 Assigné</button>
+        <button class="filter-btn" onclick="filterLeads('paye',this)">💰 Payé</button>
+        <button class="filter-btn" onclick="filterLeads('traite',this)">✅ Traités</button>
+      </div>
+      <div id="clients-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
+    </div>
+
+    <!-- MECANICIENS -->
+    <div class="panel" id="panel-mec">
+      <div class="toolbar">
+        <input class="search-input" type="text" placeholder="🔍 Nom, ville, véhicule, service..." oninput="searchMecs(this.value)">
+        <button class="tool-btn" onclick="loadMecApps()">🔄 Rafraîchir</button>
+      </div>
+      <div class="toolbar" style="margin-top:0">
+        <button class="filter-btn act" onclick="filterMecs('all',this)">Tous</button>
+        <button class="filter-btn" onclick="filterMecs('nouveau',this)">🆕 Nouveaux</button>
+        <button class="filter-btn" onclick="filterMecs('contacte',this)">📞 Contactés</button>
+        <button class="filter-btn" onclick="filterMecs('en-verification',this)">🔍 En vérification</button>
+        <button class="filter-btn" onclick="filterMecs('integre',this)">✅ Intégrés</button>
+        <button class="filter-btn" onclick="filterMecs('refuse',this)">❌ Refusés</button>
+      </div>
+      <div id="mec-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
+    </div>
+
+    <!-- RÉSERVATIONS -->
+    <div class="panel" id="panel-rdv">
+      <div class="toolbar">
+        <input class="search-input" type="text" placeholder="🔍 Nom, professionnel, code..." oninput="searchRdv(this.value)">
+        <button class="tool-btn" onclick="loadAppointments()">🔄 Rafraîchir</button>
+      </div>
+      <div class="toolbar" style="margin-top:0">
+        <button class="filter-btn act" onclick="filterRdv('all',this)">Tous</button>
+        <button class="filter-btn" onclick="filterRdv('en_attente',this)">🆕 En attente</button>
+        <button class="filter-btn" onclick="filterRdv('confirme',this)">✅ Confirmés</button>
+        <button class="filter-btn" onclick="filterRdv('termine',this)">🏁 Terminés</button>
+        <button class="filter-btn" onclick="filterRdv('refuse',this)">❌ Refusés</button>
+      </div>
+      <div id="rdv-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
+    </div>
+
+    <!-- ANNUAIRE -->
+    <div class="panel" id="panel-annuaire">
+      <div class="toolbar">
+        <button class="tool-btn" onclick="loadAnnuaireData()">🔄 Rafraîchir</button>
+        <button class="tool-btn green" onclick="toggleGarageForm()">🏪 Ajouter un garage</button>
+        <button class="tool-btn" onclick="openScheduleTemplate()" style="background:#FEF3C7;border-color:#FCD34D;color:#92400E">⏰ Horaires par défaut</button>
+        <button class="tool-btn" id="geocode-all-btn" onclick="geocodeAll()" style="background:var(--orangelt);border-color:var(--orangebdr);color:var(--orange)">📍 Géocoder les GPS manquants</button>
+        <button class="tool-btn" onclick="if(confirm('Re-géocoder TOUS les pros par leur adresse ? Ça écrase les GPS actuels.')) geocodeAll(true)" style="background:#fef2f2;border-color:#fecaca;color:#dc2626">🔁 Re-géocoder TOUT (force)</button>
+      </div>
+
+      <div class="garage-form" id="garage-form" style="display:none">
+        <h3>Ajouter un garage à l'annuaire</h3>
+        <div class="gff"><label>Nom du garage *</label><input type="text" id="ga_nom" placeholder="Garage Tremblay Auto"></div>
+        <div class="gff2">
+          <div class="gff"><label>Ville *</label>
+            <select id="ga_ville"><option value="">Choisir...</option><optgroup label="Montréal & Laval"><option>Montréal</option><option>Laval</option></optgroup><optgroup label="Montérégie"><option>Longueuil</option><option>Brossard</option><option>Boucherville</option><option>Saint-Bruno-de-Montarville</option><option>Saint-Lambert</option><option>Saint-Hubert</option><option>Candiac</option><option>La Prairie</option><option>Sainte-Catherine</option><option>Delson</option><option>Saint-Constant</option><option>Châteauguay</option><option>Mercier</option><option>Beauharnois</option><option>Salaberry-de-Valleyfield</option><option>Vaudreuil-Dorion</option><option>L'Île-Perrot</option><option>Pincourt</option><option>Sainte-Julie</option><option>Varennes</option><option>Verchères</option><option>Contrecœur</option><option>Saint-Amable</option><option>Beloeil</option><option>Mont-Saint-Hilaire</option><option>McMasterville</option><option>Otterburn Park</option><option>Saint-Basile-le-Grand</option><option>Chambly</option><option>Carignan</option><option>Marieville</option><option>Richelieu</option><option>Saint-Jean-sur-Richelieu</option><option>Saint-Hyacinthe</option><option>Sorel-Tracy</option><option>Granby</option><option>Bromont</option><option>Cowansville</option><option>Farnham</option><option>Saint-Césaire</option><option>Acton Vale</option><option>Saint-Rémi</option><option>Napierville</option><option>Huntingdon</option></optgroup><optgroup label="Laurentides"><option>Saint-Eustache</option><option>Deux-Montagnes</option><option>Sainte-Marthe-sur-le-Lac</option><option>Boisbriand</option><option>Sainte-Thérèse</option><option>Blainville</option><option>Rosemère</option><option>Lorraine</option><option>Bois-des-Filion</option><option>Mirabel</option><option>Saint-Jérôme</option><option>Prévost</option><option>Saint-Sauveur</option><option>Sainte-Adèle</option><option>Sainte-Agathe-des-Monts</option><option>Mont-Tremblant</option><option>Lachute</option><option>Saint-Colomban</option><option>Mont-Laurier</option></optgroup><optgroup label="Lanaudière"><option>Terrebonne</option><option>Mascouche</option><option>Repentigny</option><option>Charlemagne</option><option>L'Assomption</option><option>Lavaltrie</option><option>Saint-Charles-Borromée</option><option>Joliette</option><option>Notre-Dame-des-Prairies</option><option>Rawdon</option><option>Berthierville</option><option>Saint-Lin-Laurentides</option><option>Sainte-Julienne</option></optgroup><optgroup label="Capitale-Nationale"><option>Québec</option><option>L'Ancienne-Lorette</option><option>Saint-Augustin-de-Desmaures</option><option>Boischatel</option><option>Château-Richer</option><option>Beaupré</option><option>Stoneham-et-Tewkesbury</option><option>Sainte-Brigitte-de-Laval</option><option>Shannon</option><option>Donnacona</option><option>Pont-Rouge</option><option>Saint-Raymond</option><option>Baie-Saint-Paul</option><option>La Malbaie</option></optgroup><optgroup label="Chaudière-Appalaches"><option>Lévis</option><option>Saint-Georges</option><option>Sainte-Marie</option><option>Beauceville</option><option>Saint-Joseph-de-Beauce</option><option>Thetford Mines</option><option>Montmagny</option><option>Lac-Etchemin</option><option>Saint-Henri</option><option>Sainte-Croix</option></optgroup><optgroup label="Estrie"><option>Sherbrooke</option><option>Magog</option><option>Coaticook</option><option>Windsor</option><option>East Angus</option><option>Cookshire-Eaton</option><option>Lac-Mégantic</option><option>Val-des-Sources</option></optgroup><optgroup label="Mauricie"><option>Trois-Rivières</option><option>Shawinigan</option><option>Louiseville</option><option>La Tuque</option><option>Sainte-Anne-de-la-Pérade</option></optgroup><optgroup label="Centre-du-Québec"><option>Drummondville</option><option>Victoriaville</option><option>Bécancour</option><option>Nicolet</option><option>Plessisville</option><option>Warwick</option><option>Kingsey Falls</option></optgroup><optgroup label="Outaouais"><option>Gatineau</option><option>Cantley</option><option>Chelsea</option><option>Val-des-Monts</option><option>L'Ange-Gardien</option><option>Thurso</option><option>Maniwaki</option></optgroup><optgroup label="Saguenay–Lac-Saint-Jean"><option>Saguenay</option><option>Alma</option><option>Dolbeau-Mistassini</option><option>Roberval</option><option>Saint-Félicien</option><option>Chicoutimi</option><option>Jonquière</option></optgroup><optgroup label="Bas-Saint-Laurent"><option>Rimouski</option><option>Rivière-du-Loup</option><option>Matane</option><option>Mont-Joli</option><option>Amqui</option><option>Trois-Pistoles</option></optgroup><optgroup label="Abitibi-Témiscamingue"><option>Rouyn-Noranda</option><option>Val-d'Or</option><option>Amos</option><option>La Sarre</option><option>Malartic</option><option>Ville-Marie</option></optgroup><optgroup label="Côte-Nord"><option>Sept-Îles</option><option>Baie-Comeau</option><option>Port-Cartier</option></optgroup><optgroup label="Gaspésie–Îles-de-la-Madeleine"><option>Gaspé</option><option>Chandler</option><option>Carleton-sur-Mer</option><option>Les Îles-de-la-Madeleine</option><option>Sainte-Anne-des-Monts</option></optgroup><optgroup label="Nord-du-Québec"><option>Chibougamau</option><option>Lebel-sur-Quévillon</option><option>Matagami</option></optgroup><option>Autre</option></select>
+          </div>
+          <div class="gff"><label>Téléphone</label><input type="tel" id="ga_phone" placeholder="514-555-0100"></div>
+        </div>
+        <div class="gff"><label>Véhicules acceptés (séparés par virgule)</label><input type="text" id="ga_vehicules" placeholder="Voiture / VUS, Camionnette, Moto"></div>
+        <div class="gff"><label>Services offerts (séparés par virgule)</label><input type="text" id="ga_services" placeholder="Freins, Vidange, Pneus, Climatisation"></div>
+        <div class="gff"><label>Tarifs (format: Service: Prix$, séparés par virgule)</label><input type="text" id="ga_pricing" placeholder="Vidange: 49$, Freins: 149$, Pneus: 79$"></div>
+        <div class="gff"><label>Certification Greaz</label>
+          <select id="ga_cert">
+            <option value="0">Aucune certification</option>
+            <option value="1">✦ Greaz Certifié</option>
+            <option value="2">✦✦ Greaz Élite</option>
+            <option value="3">✦✦✦ Greaz Premium</option>
+          </select>
+        </div>
+        <div class="gff"><label>Disponibilités</label><input type="text" id="ga_horaires" placeholder="Lundi: Matin, Après-midi | Mardi: Matin..."></div>
+        <div class="gff"><label>Bio courte</label><textarea id="ga_bio" rows="2" placeholder="Garage familial depuis 15 ans, spécialisé..."></textarea></div>
+        <div class="action-btns">
+          <button class="abtn abtn-call" onclick="submitGarage()">✓ Publier ce garage</button>
+          <button class="abtn" style="background:var(--surface);border-color:var(--border);color:var(--muted)" onclick="toggleGarageForm()">Annuler</button>
+        </div>
+      </div>
+
+      <div class="section-title">⏳ Mécaniciens intégrés non publiés</div>
+      <div id="pending-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
+
+      <div class="section-title">📇 Annuaire public actuel</div>
+      <div id="directory-list"></div>
+    </div>
+
+    <div class="panel" id="panel-claims">
+      <div class="toolbar">
+        <button class="tool-btn" onclick="loadClaims()">🔄 Rafraîchir</button>
+      </div>
+      <div class="section-title">✋ Demandes de revendication en attente</div>
+      <div id="claims-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
+    </div>
+
+    <div class="panel" id="panel-workflow">
+      <div class="toolbar">
+        <button class="tool-btn" onclick="loadWorkflow()">🔄 Rafraîchir</button>
+        <button class="tool-btn green" onclick="openWorkflowForm()">➕ Nouveau prospect</button>
+        <select id="wf-filter-status" onchange="renderWorkflow()" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit;background:white">
+          <option value="">Tous les statuts</option>
+          <option value="a_contacter">🆕 À contacter</option>
+          <option value="en_discussion">💬 En discussion</option>
+          <option value="a_rappeler">📞 À rappeler</option>
+          <option value="en_attente">⏳ En attente</option>
+          <option value="rdv_pris">📅 RDV pris</option>
+          <option value="converti">✅ Converti</option>
+          <option value="pas_interesse">❌ Pas intéressé</option>
+        </select>
+        <select id="wf-filter-type" onchange="renderWorkflow()" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit;background:white">
+          <option value="">Tous les types</option>
+          <option value="client">🔧 Client</option>
+          <option value="garage">🏪 Garage / Mécanicien</option>
+        </select>
+        <select id="wf-filter-owner" onchange="renderWorkflow()" style="display:none;padding:8px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit;background:white">
+          <option value="">Toute l'équipe</option>
+        </select>
+      </div>
+      <div id="wf-header" class="section-title">🗂 Mes prospects</div>
+      <div id="workflow-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
+    </div>
+
+    <div class="panel" id="panel-affiliates">
+      <div class="toolbar">
+        <button class="tool-btn" onclick="loadAffiliates()">🔄 Rafraîchir</button>
+        <button class="tool-btn green" onclick="openAffiliateForm()">➕ Nouvel affilié</button>
+      </div>
+      <div class="section-title">🎯 Affiliés & codes de référence</div>
+      <div id="affiliates-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
+    </div>
+
+    <div class="panel" id="panel-team">
+      <div class="toolbar">
+        <button class="tool-btn" onclick="loadTeam()">🔄 Rafraîchir</button>
+        <button class="tool-btn green" onclick="openTeamForm()">➕ Ajouter un employé</button>
+      </div>
+      <div class="section-title">👥 Membres de l'équipe</div>
+      <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 14px;font-size:12.5px;color:#1E40AF;line-height:1.6;margin-bottom:1rem">
+        <b>Les 3 niveaux d'accès :</b><br>
+        👑 <b>Fondateur</b> — accès total, peut gérer l'équipe<br>
+        🛠️ <b>Gestionnaire</b> — tout sauf la gestion de l'équipe<br>
+        💬 <b>Support</b> — demandes clients, réservations et revendications seulement (pas d'accès à l'annuaire ni aux affiliés)
+      </div>
+      <div id="team-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script>
+var SITE_DOMAIN = "https://greaz.ca"; // ← change ici si ton domaine change
+var currentAdmin = null;      // utilisateur Firebase connecté
+var currentRole = null;       // 'founder' | 'gestionnaire' | 'support'
+
+function isFounder(){ return currentRole === 'founder'; }
+function canManageDirectory(){ return currentRole === 'founder' || currentRole === 'gestionnaire'; }
+
+var STATUTS_CLIENT = [
+  {id:"nouveau",    icon:"🆕", label:"Nouveau",            cls:"s-nouveau"},
+  {id:"urgent",     icon:"🚨", label:"Urgent",             cls:"s-urgent"},
+  {id:"en-cours",   icon:"🔄", label:"En cours",           cls:"s-en-cours"},
+  {id:"rappel",     icon:"📞", label:"À rappeler",         cls:"s-rappel"},
+  {id:"discussion", icon:"💬", label:"En discussion",      cls:"s-discussion"},
+  {id:"assigne",    icon:"🔧", label:"Mécanicien assigné", cls:"s-assigne"},
+  {id:"paye",       icon:"💰", label:"Payé",               cls:"s-paye"},
+  {id:"traite",     icon:"✅", label:"Traité",             cls:"s-traite"},
+  {id:"annule",     icon:"❌", label:"Annulé",             cls:"s-annule"},
+];
+var STATUTS_MEC = [
+  {id:"nouveau",         icon:"🆕", label:"Nouveau"},
+  {id:"contacte",        icon:"📞", label:"Contacté"},
+  {id:"en-verification", icon:"🔍", label:"En vérification"},
+  {id:"integre",         icon:"✅", label:"Intégré"},
+  {id:"refuse",          icon:"❌", label:"Refusé"},
+];
+var STATUTS_RDV = [
+  {id:"en_attente", icon:"🆕", label:"En attente", cls:"s-nouveau"},
+  {id:"confirme",   icon:"✅", label:"Confirmé",   cls:"s-assigne"},
+  {id:"termine",    icon:"🏁", label:"Terminé",    cls:"s-traite"},
+  {id:"refuse",     icon:"❌", label:"Refusé",     cls:"s-annule"},
+];
+
+firebase.initializeApp({
+  apiKey:"AIzaSyAbvCBM1J-LL5B5_v5rqjbGcM8geufmbxs",
+  authDomain:"greaz-4b00c.firebaseapp.com",
+  projectId:"greaz-4b00c",
+  storageBucket:"greaz-4b00c.firebasestorage.app",
+  messagingSenderId:"165170790975",
+  appId:"1:165170790975:web:38fe20428046e6328b6e8a"
+});
+var db = firebase.firestore();
+
+var _leads=[], _mecs=[], _rdvs=[], _pendingMecs=[], _directory=[], _claims=[], _affiliates=[];
+var _leadsFilter="all", _mecsFilter="all", _rdvFilter="all";
+var _leadsSearch="", _mecsSearch="", _rdvSearch="";
+
+/* ══════════ AUTHENTIFICATION FIREBASE ══════════ */
+function showLoginError(msg){
+  var e = document.getElementById("loginErr");
+  var inp = document.getElementById("passInput");
+  e.textContent = msg;
+  e.style.display = "block";
+  inp.classList.add("shake");
+  setTimeout(function(){ inp.classList.remove("shake"); }, 600);
+}
+
+async function doLogin(){
+  var email = (document.getElementById("emailInput").value||'').trim();
+  var pass = document.getElementById("passInput").value||'';
+  var btn = document.getElementById("login-btn");
+
+  if(!email || !pass){ showLoginError("Entre ton courriel et ton mot de passe."); return; }
+
+  btn.disabled = true;
+  btn.textContent = "Connexion...";
+  document.getElementById("loginErr").style.display = "none";
+
+  try {
+    // 1. Authentification Firebase
+    var cred = await firebase.auth().signInWithEmailAndPassword(email, pass);
+
+    // 2. Vérification que ce compte est bien un admin
+    var adminDoc = await db.collection('admins').doc(cred.user.uid).get();
+    if(!adminDoc.exists){
+      await firebase.auth().signOut();
+      showLoginError("Ce compte n'a pas les droits administrateur.");
+      btn.disabled = false; btn.textContent = "Se connecter →";
+      return;
+    }
+
+    // 3. Accès accordé
+    currentAdmin = cred.user;
+    currentRole = adminDoc.data().role || 'support';
+    document.getElementById("loginScreen").classList.remove("show");
+    document.getElementById("app").classList.add("show");
+    init();
+  } catch(e){
+    var msg = "Identifiants incorrects.";
+    if(e.code === 'auth/too-many-requests') msg = "Trop de tentatives. Réessaie dans quelques minutes.";
+    if(e.code === 'auth/invalid-email') msg = "Courriel invalide.";
+    if(e.code === 'auth/network-request-failed') msg = "Problème de connexion réseau.";
+    showLoginError(msg);
+    btn.disabled = false; btn.textContent = "Se connecter →";
+  }
+}
+
+function logout(){
+  firebase.auth().signOut().then(function(){ location.reload(); });
+}
+
+// Reconnexion automatique si la session Firebase est encore valide
+firebase.auth().onAuthStateChanged(async function(user){
+  if(user && !currentAdmin){
+    try {
+      var adminDoc = await db.collection('admins').doc(user.uid).get();
+      if(adminDoc.exists){
+        currentAdmin = user;
+        currentRole = adminDoc.data().role || 'support';
+        document.getElementById("loginScreen").classList.remove("show");
+        document.getElementById("app").classList.add("show");
+        init();
+      } else {
+        await firebase.auth().signOut();
+      }
+    } catch(e){ console.log('Auth check:', e.message); }
+  }
+});
+
+
+
+function applyRolePermissions(){
+  // Onglet Équipe : fondateur seulement
+  var teamTab = document.getElementById('tab-team');
+  if(teamTab) teamTab.style.display = isFounder() ? '' : 'none';
+
+  // Onglet Affiliés : fondateur et gestionnaire seulement (pas le support)
+  var affTab = document.getElementById('tab-affiliates');
+  if(affTab) affTab.style.display = canManageDirectory() ? '' : 'none';
+
+  // Annuaire, Clients, Réservations, Revendications, Workflow : visibles pour tous
+  // (le support peut consulter l'annuaire pour trouver des garages à recruter)
+
+  // Export CSV : pas pour le support
+  var csvBtn = document.querySelector('.btn-export');
+  if(csvBtn) csvBtn.style.display = canManageDirectory() ? '' : 'none';
+}
+
+function init(){
+  if(currentAdmin){
+    var el = document.getElementById('admin-email');
+    var r = ROLES[currentRole] || ROLES.support;
+    if(el) el.textContent = r.icon + ' ' + currentAdmin.email;
+  }
+
+  // Permissions selon le rôle
+  applyRolePermissions();
+
+  updateTime(); setInterval(updateTime,30000);
+  loadLeads(); loadMecApps(); loadAppointments(); loadClaims(); loadWorkflow(); loadTeam(); loadAnnuaireData();
+  if(canManageDirectory()){ loadAffiliates(); }
+  setTimeout(startRealtimeNotifications, 3000); // démarre après le chargement initial
+}
+
+/* ══════════ NOTIFICATIONS TEMPS RÉEL ══════════ */
+var _notifSoundOn = true;
+var _notifCount = 0;
+var _notifReady = false; // évite de notifier au premier chargement
+var _seenLeadIds = {};
+var _seenRdvIds = {};
+var _seenClaimIds = {};
+
+function toggleNotifSound(){
+  _notifSoundOn = !_notifSoundOn;
+  var bell = document.getElementById('notif-bell');
+  bell.style.opacity = _notifSoundOn ? '1' : '0.4';
+  bell.title = _notifSoundOn ? 'Son activé' : 'Son désactivé';
+  showNotif(_notifSoundOn ? '🔔 Notifications activées' : '🔕 Son désactivé', '', null, true);
+}
+
+function playNotifSound(){
+  if(!_notifSoundOn) return;
+  try {
+    var ctx = new (window.AudioContext||window.webkitAudioContext)();
+    // Deux bips ascendants agréables
+    [0, 0.15].forEach(function(delay, i){
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = i===0 ? 660 : 880;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0, ctx.currentTime+delay);
+      gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime+delay+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+delay+0.25);
+      osc.start(ctx.currentTime+delay);
+      osc.stop(ctx.currentTime+delay+0.25);
+    });
+  } catch(e){}
+}
+
+function updateNotifBadge(){
+  var badge = document.getElementById('notif-badge');
+  if(_notifCount > 0){
+    badge.textContent = _notifCount > 99 ? '99+' : _notifCount;
+    badge.style.display = 'flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function showNotif(title, subtitle, tabTarget, silent){
+  var container = document.getElementById('notif-container');
+  var toast = document.createElement('div');
+  toast.style.cssText = 'background:white;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);border-left:4px solid #00C26F;padding:14px 16px;cursor:pointer;animation:slideIn .3s ease;transform-origin:right';
+  toast.innerHTML = '<div style="display:flex;align-items:flex-start;gap:10px">'
+    +'<div style="font-size:22px;flex-shrink:0">🔔</div>'
+    +'<div style="flex:1;min-width:0">'
+    +'<div style="font-weight:700;font-size:13px;color:#0A0C1B;margin-bottom:2px">'+title+'</div>'
+    +(subtitle?'<div style="font-size:12px;color:#6B7280">'+subtitle+'</div>':'')
+    +'</div>'
+    +'<div style="font-size:16px;color:#9ca3af;flex-shrink:0">×</div>'
+    +'</div>';
+  
+  toast.onclick = function(){
+    if(tabTarget) switchTab(tabTarget);
+    toast.remove();
+  };
+  
+  container.appendChild(toast);
+  
+  // Auto-remove après 8s
+  setTimeout(function(){
+    toast.style.animation = 'slideOut .3s ease';
+    setTimeout(function(){ toast.remove(); }, 300);
+  }, 8000);
+  
+  if(!silent) playNotifSound();
+}
+
+function startRealtimeNotifications(){
+  // Marque les leads/rdv actuels comme "déjà vus"
+  _leads.forEach(function(l){ _seenLeadIds[l.id] = true; });
+  _rdvs.forEach(function(a){ _seenRdvIds[a.id] = true; });
+  _claims.forEach(function(c){ _seenClaimIds[c.id] = true; });
+  _notifReady = true;
+
+  // LISTENER : nouvelles demandes clients (leads)
+  db.collection("leads").onSnapshot(function(snap){
+    snap.docChanges().forEach(function(change){
+      if(change.type === 'added' && _notifReady && !_seenLeadIds[change.doc.id]){
+        _seenLeadIds[change.doc.id] = true;
+        var d = change.doc.data();
+        _notifCount++;
+        updateNotifBadge();
+        var veh = [d.vehicle_make, d.vehicle_model].filter(Boolean).join(' ');
+        showNotif(
+          '🔧 Nouvelle demande client !',
+          (d.client_name||'Client')+(veh?' · '+veh:'')+(d.city?' · '+d.city:''),
+          'clients'
+        );
+        loadLeads(); // rafraîchit la liste
+      }
+    });
+  }, function(err){ console.log('Notif leads error:', err.message); });
+
+  // LISTENER : nouvelles réservations (appointments)
+  db.collection("appointments").onSnapshot(function(snap){
+    snap.docChanges().forEach(function(change){
+      if(change.type === 'added' && _notifReady && !_seenRdvIds[change.doc.id]){
+        _seenRdvIds[change.doc.id] = true;
+        var d = change.doc.data();
+        _notifCount++;
+        updateNotifBadge();
+        showNotif(
+          '📅 Nouvelle réservation !',
+          (d.client_name||'Client')+(d.mechanic_name?' → '+d.mechanic_name:''),
+          'rdv'
+        );
+        loadAppointments();
+      }
+    });
+  }, function(err){ console.log('Notif rdv error:', err.message); });
+
+  // LISTENER : nouvelles revendications de garages (claims)
+  db.collection("claims").onSnapshot(function(snap){
+    snap.docChanges().forEach(function(change){
+      if(change.type === 'added' && _notifReady && !_seenClaimIds[change.doc.id]){
+        _seenClaimIds[change.doc.id] = true;
+        var d = change.doc.data();
+        _notifCount++;
+        updateNotifBadge();
+        showNotif(
+          '✋ Nouvelle revendication !',
+          (d.garage_name||'Garage')+(d.contact_name?' · '+d.contact_name:''),
+          'claims'
+        );
+        loadClaims();
+      }
+    });
+  }, function(err){ console.log('Notif claims error:', err.message); });
+
+  console.log('✅ Notifications temps réel activées');
+}
+
+// Reset le compteur quand on visite un onglet
+function clearNotifCount(){
+  _notifCount = 0;
+  updateNotifBadge();
+}
+function updateTime(){
+  var n = new Date();
+  document.getElementById("htime").textContent =
+    n.toLocaleDateString("fr-CA",{weekday:"short",day:"numeric",month:"short"})
+    +" · "+n.toLocaleTimeString("fr-CA",{hour:"2-digit",minute:"2-digit"});
+}
+function switchTab(t){
+  document.querySelectorAll(".tab").forEach(function(x){ x.classList.remove("act"); });
+  document.querySelectorAll(".panel").forEach(function(x){ x.classList.remove("act"); });
+  document.getElementById("tab-"+t).classList.add("act");
+  document.getElementById("panel-"+t).classList.add("act");
+  if(t==='clients' || t==='rdv' || t==='claims') clearNotifCount();
+}
+
+/* ══════════ LEADS (CLIENTS) ══════════ */
+function loadLeads(){
+  document.getElementById("clients-list").innerHTML = '<div class="loading"><span class="spinner"></span>Chargement...</div>';
+  db.collection("leads").get().then(function(snap){
+    _leads = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    _leads.sort(function(a,b){
+      var da = a.created_at&&a.created_at.toDate ? a.created_at.toDate() : new Date(0);
+      var db2 = b.created_at&&b.created_at.toDate ? b.created_at.toDate() : new Date(0);
+      return db2 - da;
+    });
+    updateStats(); renderLeads();
+  }).catch(function(e){
+    document.getElementById("clients-list").innerHTML = '<div class="loading">⚠️ '+e.message+'</div>';
+  });
+}
+function filterLeads(f, btn){
+  _leadsFilter = f;
+  document.querySelectorAll("#panel-clients .filter-btn").forEach(function(b){ b.classList.remove("act"); });
+  if(btn) btn.classList.add("act");
+  renderLeads();
+}
+function searchLeads(q){ _leadsSearch = q.toLowerCase(); renderLeads(); }
+function renderLeads(){
+  var list = _leads.filter(function(l){
+    if(_leadsFilter !== "all" && (l.status||"nouveau") !== _leadsFilter) return false;
+    if(_leadsSearch){
+      var h = ((l.client_name||"")+(l.client_phone||"")+(l.problem||"")+(l.address||"")).toLowerCase();
+      if(!h.includes(_leadsSearch)) return false;
+    }
+    return true;
+  });
+  document.getElementById("tb1").textContent = _leads.filter(function(l){ return !l.status||l.status==="nouveau"; }).length;
+  if(!list.length){
+    document.getElementById("clients-list").innerHTML = '<div class="empty"><div class="empty-icon">📭</div><p>Aucune demande</p></div>';
+    return;
+  }
+  document.getElementById("clients-list").innerHTML = '<div class="cards">'+list.map(leadCard).join("")+'</div>';
+}
+function leadCard(l){
+  var st = l.status || "nouveau";
+  var stObj = STATUTS_CLIENT.find(function(s){ return s.id===st; }) || STATUTS_CLIENT[0];
+  var urg = l.urgency==="Dès que possible" ? '<span class="ubadge u-asap">🚨 Urgent</span>'
+           : l.urgency==="Sous 24h"         ? '<span class="ubadge u-24h">⏰ 24h</span>'
+           : l.urgency                       ? '<span class="ubadge u-date">📅 '+l.urgency+'</span>' : '';
+  var dt = l.created_at&&l.created_at.toDate ? l.created_at.toDate().toLocaleString("fr-CA") : "—";
+  var contact = l.contact_pref==="sms" ? "💬 SMS" : l.contact_pref==="email" ? "📧 Courriel" : "📱 SMS+courriel";
+  var vehicle = [l.vehicle_make, l.vehicle_model, l.vehicle_year].filter(Boolean).join(" ") || "";
+
+  var notes = l.notes || [];
+  var notesHtml = notes.length
+    ? "<div class='notes-list'>"+notes.map(function(n){ return "<div class='note-item'><div>"+n.text+"</div><div class='note-meta'>"+n.author+" · "+n.time+"</div></div>"; }).join("")+"</div>"
+    : "<div style='font-size:12px;color:var(--muted);margin-bottom:8px'>Aucune note pour l'instant.</div>";
+
+  var stBtns = STATUTS_CLIENT.map(function(s){
+    return "<button class='st-btn"+(st===s.id?" act-st":"")+"' onclick='setLeadStatus(\""+l.id+"\",\""+s.id+"\")'>"+s.icon+" "+s.label+"</button>";
+  }).join("");
+
+  return "<div class='card "+st+"' id='card-"+l.id+"'>"
+    +"<div class='card-top' onclick='toggleCard(\""+l.id+"\")'>"
+    +"<div class='card-main'>"
+    +"<div class='card-name'>"+(l.client_name||"—")+"</div>"
+    +"<div class='card-meta'>"
+    +(l.client_phone ? "<span>📞 "+l.client_phone+"</span>" : "")
+    +(l.problem && l.problem!=="Non précisé" ? "<span>· "+l.problem+"</span>" : "")
+    +(vehicle ? "<span>· "+vehicle+"</span>" : "")
+    +"</div></div>"
+    +"<div class='card-right'><span class='sbadge "+stObj.cls+"'>"+stObj.icon+" "+stObj.label+"</span>"+urg+"</div>"
+    +"</div>"
+    +"<div class='card-body' id='body-"+l.id+"'>"
+    +"<div class='info-grid'>"
+    +"<div class='info-item'><div class='il'>Téléphone</div><div class='iv'><a href='tel:"+l.client_phone+"'>"+(l.client_phone||"—")+"</a></div></div>"
+    +"<div class='info-item'><div class='il'>Courriel</div><div class='iv'><a href='mailto:"+l.client_email+"'>"+(l.client_email||"—")+"</a></div></div>"
+    +"<div class='info-item'><div class='il'>Adresse</div><div class='iv'>"+(l.address||"—")+"</div></div>"
+    +"<div class='info-item'><div class='il'>Véhicule</div><div class='iv'>"+(vehicle||"—")+"</div></div>"
+    +"<div class='info-item'><div class='il'>Problème</div><div class='iv'>"+(l.problem||"—")+"</div></div>"
+    +"<div class='info-item'><div class='il'>Urgence</div><div class='iv'>"+(l.urgency||"—")+"</div></div>"
+    +"<div class='info-item'><div class='il'>Contact</div><div class='iv'>"+contact+"</div></div>"
+    +"<div class='info-item'><div class='il'>Code réservation</div><div class='iv' style='color:var(--blue);font-weight:700'>"+(l.booking_code||"—")+"</div></div>"
+    +(l.description?"<div class='info-item' style='grid-column:1/-1'><div class='il'>Description client</div><div class='iv'>"+l.description+"</div></div>":"")
+    +"<div class='info-item'><div class='il'>Reçu le</div><div class='iv'>"+dt+"</div></div>"
+    +"</div>"
+    +"<div class='status-selector'><div class='status-selector-label'>Statut de la demande</div><div class='status-btns'>"+stBtns+"</div></div>"
+    +"<div class='notes-section'><div class='notes-label'>Notes internes</div>"+notesHtml
+    +"<div class='note-input-row'><textarea class='note-input' id='note-input-"+l.id+"' rows='2' placeholder='Ajouter une note...'></textarea>"
+    +"<button class='note-add-btn' onclick='addNote(\""+l.id+"\",\"leads\")'>Ajouter</button></div></div>"
+    +"<div class='action-btns'>"
+    +"<a href='tel:"+l.client_phone+"' class='abtn abtn-call'>📞 Appeler</a>"
+    +"<a href='sms:"+l.client_phone+"' class='abtn abtn-sms'>💬 SMS</a>"
+    +"<a href='mailto:"+l.client_email+"' class='abtn abtn-email'>📧 Email</a>"
+    +"<button class='abtn abtn-del' onclick='deleteLead(\""+l.id+"\")'>🗑 Supprimer</button>"
+    +"</div></div></div>";
+}
+
+/* ══════════ MÉCANICIENS ══════════ */
+function loadMecApps(){
+  document.getElementById("mec-list").innerHTML = '<div class="loading"><span class="spinner"></span>Chargement...</div>';
+  db.collection("mechanic_applications").get().then(function(snap){
+    _mecs = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    _mecs.sort(function(a,b){
+      var da = a.created_at&&a.created_at.toDate ? a.created_at.toDate() : new Date(0);
+      var db2 = b.created_at&&b.created_at.toDate ? b.created_at.toDate() : new Date(0);
+      return db2 - da;
+    });
+    updateStats(); renderMecs();
+  }).catch(function(e){
+    document.getElementById("mec-list").innerHTML = '<div class="loading">⚠️ '+e.message+'</div>';
+  });
+}
+function filterMecs(f, btn){
+  _mecsFilter = f;
+  document.querySelectorAll("#panel-mec .filter-btn").forEach(function(b){ b.classList.remove("act"); });
+  if(btn) btn.classList.add("act");
+  renderMecs();
+}
+function searchMecs(q){ _mecsSearch = q.toLowerCase(); renderMecs(); }
+function renderMecs(){
+  var list = _mecs.filter(function(m){
+    if(_mecsFilter !== "all" && (m.status||"nouveau") !== _mecsFilter) return false;
+    if(_mecsSearch){
+      var h = ((m.first_name||"")+(m.last_name||"")+(m.phone||"")+(m.city||"")+(m.vehicle_types||"")+(m.services||"")).toLowerCase();
+      if(!h.includes(_mecsSearch)) return false;
+    }
+    return true;
+  });
+  document.getElementById("tb2").textContent = _mecs.filter(function(m){ return !m.status||m.status==="nouveau"; }).length;
+  if(!list.length){
+    document.getElementById("mec-list").innerHTML = '<div class="empty"><div class="empty-icon">👨‍🔧</div><p>Aucune candidature</p></div>';
+    return;
+  }
+  document.getElementById("mec-list").innerHTML = '<div class="cards">'+list.map(mecCard).join("")+'</div>';
+}
+function mecCard(m){
+  var st = m.status || "nouveau";
+  var stObj = STATUTS_MEC.find(function(s){ return s.id===st; }) || STATUTS_MEC[0];
+  var stColor = st==="integre" ? "var(--green)" : st==="contacte" ? "var(--orange)" : st==="en-verification" ? "var(--blue)" : st==="refuse" ? "var(--red)" : "var(--muted)";
+  var dt = m.created_at&&m.created_at.toDate ? m.created_at.toDate().toLocaleString("fr-CA") : "—";
+  var sourceBadge = m.source === "mechanic-signup"
+    ? "<span class='source-badge'>📋 Formulaire dédié</span>"
+    : "<span class='source-badge' style='background:var(--teallt);color:var(--teal);border-color:var(--tealbdr)'>🌐 Landing</span>";
+  var vehTags = m.vehicle_types && m.vehicle_types !== "Non précisé"
+    ? m.vehicle_types.split(", ").map(function(v){ return "<span class='tag'>"+v+"</span>"; }).join("") : "";
+  var svcTags = m.services && m.services !== "Non précisé"
+    ? m.services.split(", ").map(function(s){ return "<span class='tag tag-blue'>"+s+"</span>"; }).join("") : "";
+
+  var notes = m.notes || [];
+  var notesHtml = notes.length
+    ? "<div class='notes-list'>"+notes.map(function(n){ return "<div class='note-item'><div>"+n.text+"</div><div class='note-meta'>"+n.author+" · "+n.time+"</div></div>"; }).join("")+"</div>"
+    : "<div style='font-size:12px;color:var(--muted);margin-bottom:8px'>Aucune note.</div>";
+
+  var stBtns = STATUTS_MEC.map(function(s){
+    return "<button class='st-btn"+(st===s.id?" act-st":"")+"' onclick='setMecStatus(\""+m.id+"\",\""+s.id+"\")'>"+s.icon+" "+s.label+"</button>";
+  }).join("");
+
+  return "<div class='card' style='border-left:4px solid "+stColor+"' id='card-"+m.id+"'>"
+    +"<div class='card-top' onclick='toggleCard(\""+m.id+"\")'>"
+    +"<div class='card-main'>"
+    +"<div class='card-name'>"+(m.first_name||"")+" "+(m.last_name||"")
+    +"<span style='font-size:11px;font-weight:400;color:var(--muted);margin-left:8px'>"+(m.experience||"")+"</span></div>"
+    +"<div class='card-meta'>"
+    +(m.phone ? "<span>📞 "+m.phone+"</span>" : "")
+    +(m.city  ? "<span>· 📍 "+m.city+"</span>" : "")
+    +(m.radius ? "<span>· 🚗 "+m.radius+"</span>" : "")
+    +"</div>"
+    +(vehTags||svcTags ? "<div class='tags-row' style='margin-top:6px'>"+vehTags+svcTags+"</div>" : "")
+    +"</div>"
+    +"<div class='card-right'><span class='sbadge' style='background:var(--surface);border:1px solid var(--border);color:var(--ink)'>"+stObj.icon+" "+stObj.label+"</span>"+sourceBadge+"</div>"
+    +"</div>"
+    +"<div class='card-body' id='body-"+m.id+"'>"
+    +"<div class='info-grid'>"
+    +"<div class='info-item'><div class='il'>Téléphone</div><div class='iv'><a href='tel:"+m.phone+"'>"+(m.phone||"—")+"</a></div></div>"
+    +"<div class='info-item'><div class='il'>Courriel</div><div class='iv'><a href='mailto:"+m.email+"'>"+(m.email||"—")+"</a></div></div>"
+    +"<div class='info-item'><div class='il'>Ville</div><div class='iv'>"+(m.city||"—")+"</div></div>"
+    +"<div class='info-item'><div class='il'>Expérience</div><div class='iv'>"+(m.experience||"—")+"</div></div>"
+    +"<div class='info-item'><div class='il'>Licence</div><div class='iv'>"+(m.license||"—")+"</div></div>"
+    +"<div class='info-item'><div class='il'>Rayon</div><div class='iv'>"+(m.radius||"—")+"</div></div>"
+    +"<div class='info-item'><div class='il'>Disponibilités</div><div class='iv'>"+(m.availability||m.schedule||"—")+"</div></div>"
+    +"<div class='info-item'><div class='il'>Source</div><div class='iv'>"+(m.source||"landing")+"</div></div>"
+    +"<div class='info-item' style='grid-column:1/-1'><div class='il'>Véhicules acceptés</div><div class='iv'>"+(m.vehicle_types||"—")+"</div></div>"
+    +(m.services ? "<div class='info-item' style='grid-column:1/-1'><div class='il'>Services offerts</div><div class='iv'>"+m.services+"</div></div>" : "")
+    +(m.bio ? "<div class='info-item' style='grid-column:1/-1'><div class='il'>Présentation</div><div class='iv'>"+m.bio+"</div></div>" : "")
+    +"<div class='info-item'><div class='il'>Postulé le</div><div class='iv'>"+dt+"</div></div>"
+    +"</div>"
+    +"<div class='status-selector'><div class='status-selector-label'>Statut du mécanicien</div><div class='status-btns'>"+stBtns+"</div></div>"
+    +"<div class='notes-section'><div class='notes-label'>Notes internes</div>"+notesHtml
+    +"<div class='note-input-row'><textarea class='note-input' id='note-input-"+m.id+"' rows='2' placeholder='Ajouter une note...'></textarea>"
+    +"<button class='note-add-btn' onclick='addNote(\""+m.id+"\",\"mechanic_applications\")'>Ajouter</button></div></div>"
+    +"<div class='action-btns'>"
+    +"<a href='tel:"+m.phone+"' class='abtn abtn-call'>📞 Appeler</a>"
+    +"<a href='sms:"+m.phone+"' class='abtn abtn-sms'>💬 SMS</a>"
+    +"<a href='mailto:"+m.email+"' class='abtn abtn-email'>📧 Email</a>"
+    +"<button class='abtn abtn-del' onclick='deleteMec(\""+m.id+"\")'>🗑 Supprimer</button>"
+    +"</div></div></div>";
+}
+
+/* ══════════ RÉSERVATIONS (appointments) ══════════ */
+function loadAppointments(){
+  document.getElementById("rdv-list").innerHTML = '<div class="loading"><span class="spinner"></span>Chargement...</div>';
+  db.collection("appointments").get().then(function(snap){
+    _rdvs = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    _rdvs.sort(function(a,b){
+      var da = a.created_at&&a.created_at.toDate ? a.created_at.toDate() : new Date(0);
+      var db2 = b.created_at&&b.created_at.toDate ? b.created_at.toDate() : new Date(0);
+      return db2 - da;
+    });
+    updateStats(); renderRdv();
+  }).catch(function(e){
+    document.getElementById("rdv-list").innerHTML = '<div class="loading">⚠️ '+e.message+'</div>';
+  });
+}
+function filterRdv(f, btn){
+  _rdvFilter = f;
+  document.querySelectorAll("#panel-rdv .filter-btn").forEach(function(b){ b.classList.remove("act"); });
+  if(btn) btn.classList.add("act");
+  renderRdv();
+}
+function searchRdv(q){ _rdvSearch = q.toLowerCase(); renderRdv(); }
+function renderRdv(){
+  var list = _rdvs.filter(function(a){
+    if(_rdvFilter !== "all" && (a.status||"en_attente") !== _rdvFilter) return false;
+    if(_rdvSearch){
+      var h = ((a.client_prenom||"")+(a.client_nom||"")+(a.mechanic_name||"")+(a.booking_code||"")).toLowerCase();
+      if(!h.includes(_rdvSearch)) return false;
+    }
+    return true;
+  });
+  document.getElementById("tb3").textContent = _rdvs.filter(function(a){ return !a.status||a.status==="en_attente"; }).length;
+  if(!list.length){
+    document.getElementById("rdv-list").innerHTML = '<div class="empty"><div class="empty-icon">📅</div><p>Aucune réservation</p></div>';
+    return;
+  }
+  document.getElementById("rdv-list").innerHTML = '<div class="cards">'+list.map(rdvCard).join("")+'</div>';
+}
+var SLOT_LABELS = {matin:"Matin (8h-12h)", aprem:"Après-midi (12h-17h)", soir:"Soir (17h-21h)"};
+function rdvCard(a){
+  var st = a.status || "en_attente";
+  var stObj = STATUTS_RDV.find(function(s){ return s.id===st; }) || STATUTS_RDV[0];
+  var dt = a.created_at&&a.created_at.toDate ? a.created_at.toDate().toLocaleString("fr-CA") : "—";
+  var typeLabel = a.mechanic_type === 'garage' ? '🏪 Garage' : '🔧 Mécanicien mobile';
+
+  var stBtns = STATUTS_RDV.map(function(s){
+    return "<button class='st-btn"+(st===s.id?" act-st":"")+"' onclick='setRdvStatus(\""+a.id+"\",\""+s.id+"\")'>"+s.icon+" "+s.label+"</button>";
+  }).join("");
+
+  var reviewLinkBox = "";
+  if(st === "termine"){
+    var link = SITE_DOMAIN + "/?avis=1&booking=" + a.id + "&code=" + a.booking_code + "&mec=" + a.mechanic_id;
+    reviewLinkBox = "<div class='review-link-box'>"
+      +"<div class='review-link-label'>⭐ Lien d'avis pour le client (envoie-le-lui)</div>"
+      +"<div class='review-link-row'>"
+      +"<input class='review-link-input' id='link-"+a.id+"' value='"+link+"' readonly>"
+      +"<button class='review-copy-btn' onclick='copyReviewLink(\""+a.id+"\")'>Copier</button>"
+      +"</div></div>";
+  }
+
+  return "<div class='card "+st+"' id='card-"+a.id+"'>"
+    +"<div class='card-top' onclick='toggleCard(\""+a.id+"\")'>"
+    +"<div class='card-main'>"
+    +"<div class='card-name'>"+(a.client_prenom||"")+" "+(a.client_nom||"")+"</div>"
+    +"<div class='card-meta'>"
+    +"<span>👉 "+(a.mechanic_name||"—")+"</span>"
+    +"<span>· 📅 "+(a.date||"—")+" · "+(SLOT_LABELS[a.time_slot]||a.time_slot||"—")+"</span>"
+    +"</div></div>"
+    +"<div class='card-right'><span class='sbadge "+stObj.cls+"'>"+stObj.icon+" "+stObj.label+"</span></div>"
+    +"</div>"
+    +"<div class='card-body' id='body-"+a.id+"'>"
+    +"<div class='info-grid'>"
+    +"<div class='info-item'><div class='il'>Professionnel</div><div class='iv'>"+(a.mechanic_name||"—")+" ("+typeLabel+")</div></div>"
+    +"<div class='info-item'><div class='il'>Téléphone</div><div class='iv'><a href='tel:"+a.client_phone+"'>"+(a.client_phone||"—")+"</a></div></div>"
+    +"<div class='info-item'><div class='il'>Courriel</div><div class='iv'><a href='mailto:"+a.client_email+"'>"+(a.client_email||"—")+"</a></div></div>"
+    +"<div class='info-item'><div class='il'>Date demandée</div><div class='iv'>"+(a.date||"—")+"</div></div>"
+    +"<div class='info-item'><div class='il'>Plage horaire</div><div class='iv'>"+(SLOT_LABELS[a.time_slot]||a.time_slot||"—")+"</div></div>"
+    +"<div class='info-item'><div class='il'>Problème</div><div class='iv'>"+(a.problem||"—")+"</div></div>"
+    +(a.client_address ? "<div class='info-item'><div class='il'>Adresse</div><div class='iv'>"+a.client_address+"</div></div>" : "")
+    +"<div class='info-item'><div class='il'>Code</div><div class='iv' style='color:var(--blue);font-weight:700'>"+(a.booking_code||"—")+"</div></div>"
+    +(a.description ? "<div class='info-item' style='grid-column:1/-1'><div class='il'>Description</div><div class='iv'>"+a.description+"</div></div>" : "")
+    +"<div class='info-item'><div class='il'>Reçu le</div><div class='iv'>"+dt+"</div></div>"
+    +"</div>"
+    +"<div class='status-selector'><div class='status-selector-label'>Statut de la réservation</div><div class='status-btns'>"+stBtns+"</div></div>"
+    +reviewLinkBox
+    +"<div class='action-btns' style='margin-top:12px'>"
+    +"<a href='tel:"+a.client_phone+"' class='abtn abtn-call'>📞 Appeler</a>"
+    +"<a href='sms:"+a.client_phone+"' class='abtn abtn-sms'>💬 SMS</a>"
+    +"<a href='mailto:"+a.client_email+"' class='abtn abtn-email'>📧 Email</a>"
+    +"<button class='abtn abtn-del' onclick='deleteRdv(\""+a.id+"\")'>🗑 Supprimer</button>"
+    +"</div></div></div>";
+}
+function setRdvStatus(id, status){
+  db.collection("appointments").doc(id).update({status:status, updated_at:firebase.firestore.FieldValue.serverTimestamp()})
+    .then(function(){
+      var item = _rdvs.find(function(a){ return a.id===id; });
+      if(item) item.status = status;
+      updateStats(); renderRdv();
+      setTimeout(function(){ var b=document.getElementById("body-"+id); if(b) b.classList.add("open"); }, 50);
+    });
+}
+function copyReviewLink(id){
+  var input = document.getElementById("link-"+id);
+  if(!input) return;
+  try {
+    navigator.clipboard.writeText(input.value).then(function(){
+      var btn = input.nextElementSibling;
+      var orig = btn.textContent;
+      btn.textContent = "Copié ✓";
+      setTimeout(function(){ btn.textContent = orig; }, 1500);
+    });
+  } catch(e){
+    input.select();
+    document.execCommand('copy');
+  }
+}
+function deleteRdv(id){
+  if(!confirm("Supprimer cette réservation ?")) return;
+  db.collection("appointments").doc(id).delete().then(function(){
+    _rdvs = _rdvs.filter(function(a){ return a.id!==id; });
+    updateStats(); renderRdv();
+  });
+}
+
+/* ══════════ ANNUAIRE ══════════ */
+function loadAnnuaireData(){
+  Promise.all([
+    db.collection("mechanic_applications").where("status","==","integre").get(),
+    db.collection("mechanics_public").get()
+  ]).then(function(results){
+    var integreSnap = results[0], pubSnap = results[1];
+    var integreList = integreSnap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    _directory = pubSnap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+
+    var publishedIds = _directory.map(function(d){ return d.id; });
+    _pendingMecs = integreList.filter(function(m){ return publishedIds.indexOf(m.id) === -1; });
+
+    document.getElementById("tb4").textContent = _directory.filter(function(d){ return d.active!==false; }).length;
+    renderPending();
+    renderDirectoryList();
+  }).catch(function(e){
+    document.getElementById("pending-list").innerHTML = '<div class="loading">⚠️ '+e.message+'</div>';
+  });
+}
+
+function renderPending(){
+  var el = document.getElementById("pending-list");
+  if(!_pendingMecs.length){
+    el.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:.5rem 0">Aucun mécanicien intégré en attente de publication.</div>';
+    return;
+  }
+  el.innerHTML = _pendingMecs.map(function(m){
+    return "<div class='pending-row'>"
+      +"<div class='pending-info'><strong>"+(m.first_name||"")+" "+(m.last_name||"")+"</strong>"
+      +"<span>📍 "+(m.city||"—")+" · "+(m.experience||"—")+"</span></div>"
+      +"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>"
+      +"<select id='cert-"+m.id+"' style='padding:5px 8px;border-radius:6px;border:1px solid var(--border);font-size:12px;background:white;color:var(--ink)'>"
+      +"<option value='0'>Aucune certification</option>"
+      +"<option value='1'>✦ Greaz Certifié</option>"
+      +"<option value='2'>✦✦ Greaz Élite</option>"
+      +"<option value='3'>✦✦✦ Greaz Premium</option>"
+      +"</select>"
+      +"<button class='tool-btn green' onclick='publishMechanic(\""+m.id+"\")'>📇 Publier à l'annuaire</button>"
+      +"</div></div>";
+  }).join("");
+}
+
+async function publishMechanic(appId){
+  var m = _pendingMecs.find(function(x){ return x.id === appId; });
+  if(!m) return;
+  var certEl = document.getElementById('cert-'+appId);
+  var certification = certEl ? parseInt(certEl.value||'0') : 0;
+
+  // Géocodage par adresse complète (précis) ou ville (fallback)
+  var lat = null, lng = null;
+  var geocodeAddr = m.address
+    ? m.address + ', Québec, Canada'
+    : (m.city || '') + ', Québec, Canada';
+
+  try {
+    var gRes = await fetch('https://nominatim.openstreetmap.org/search?q='+encodeURIComponent(geocodeAddr)+'&format=json&limit=1&countrycodes=ca');
+    var gData = await gRes.json();
+    if(gData.length > 0){ lat = parseFloat(gData[0].lat); lng = parseFloat(gData[0].lon); }
+  } catch(e){ console.log('Geocoding failed:', e); }
+
+  db.collection("mechanics_public").doc(appId).set({
+    name: m.type_inscription === 'garage'
+      ? (m.garage_name || (m.first_name||"")+" "+(m.last_name||""))
+      : (m.first_name||"")+" "+(m.last_name||""),
+    type: m.type_inscription === 'garage' ? 'garage' : 'mecanicien',
+    city: m.city || "",
+    address: m.address || "",
+    vehicle_types: m.vehicle_types || "",
+    services: m.services || "",
+    schedule: m.schedule || "",
+    radius: m.radius || "",
+    experience: m.experience || "",
+    bio: m.bio || "",
+    pricing: m.pricing || "",
+    photo_url: m.photo_url || "",
+    certification: certification,
+    lat: lat, lng: lng,
+    active: true,
+    source_application_id: appId,
+    created_at: firebase.firestore.FieldValue.serverTimestamp(),
+  }).then(function(){
+    loadAnnuaireData();
+  });
+}
+
+var CITY_COORDS_DASH = {
+  'Montréal':[45.5017,-73.5673], 'Laval':[45.6066,-73.7124],
+  'Terrebonne':[45.7000,-73.6467], 'Repentigny':[45.7423,-73.4514],
+  'Mascouche':[45.7477,-73.6003], 'Blainville':[45.6697,-73.8825],
+  'Boisbriand':[45.6197,-73.8355], 'Saint-Eustache':[45.5649,-73.9036],
+  'Deux-Montagnes':[45.5386,-73.8983], 'Mirabel':[45.6501,-74.0822],
+  'Saint-Jérôme':[45.7799,-74.0037], 'Rosemère':[45.6389,-73.7997],
+  'Sainte-Thérèse':[45.6389,-73.8283], 'Longueuil':[45.5312,-73.5185],
+  'Brossard':[45.4501,-73.4658], 'Boucherville':[45.6066,-73.4363],
+  'Saint-Bruno-de-Montarville':[45.5361,-73.3494], 'Saint-Lambert':[45.4989,-73.5058],
+  'Candiac':[45.3833,-73.5167], 'La Prairie':[45.4167,-73.5000],
+  'Châteauguay':[45.3667,-73.7500], 'Saint-Constant':[45.3667,-73.5667],
+  'Sainte-Julie':[45.5833,-73.3333], 'Varennes':[45.6833,-73.4333],
+  'Beloeil':[45.5667,-73.2000], 'Mont-Saint-Hilaire':[45.5667,-73.1833],
+  'Chambly':[45.4500,-73.2833], 'Saint-Jean-sur-Richelieu':[45.3067,-73.2625],
+  'Saint-Hyacinthe':[45.6167,-72.9500], 'Sorel-Tracy':[46.0333,-73.1167],
+  'Salaberry-de-Valleyfield':[45.2500,-74.1333], 'Vaudreuil-Dorion':[45.4000,-74.0333],
+  "L'Île-Perrot":[45.3833,-73.9500],
+};
+function _kmBetweenDash(lat1,lng1,lat2,lng2){
+  var R=6371, dLat=(lat2-lat1)*Math.PI/180, dLng=(lng2-lng1)*Math.PI/180;
+  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function gpsSuspect(lat, lng, city){
+  var ref = CITY_COORDS_DASH[city];
+  if(!ref || !lat || !lng) return false;
+  return _kmBetweenDash(parseFloat(lat), parseFloat(lng), ref[0], ref[1]) > 60;
+}
+
+function renderDirectoryList(){
+  var el = document.getElementById("directory-list");
+  if(!_directory.length){
+    el.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:.5rem 0">Aucun professionnel publié pour l\'instant.</div>';
+    return;
+  }
+  var CL = {0:'',1:'✦ Certifié',2:'✦✦ Élite',3:'✦✦✦ Premium'};
+  el.innerHTML = _directory.map(function(d){
+    var isGarage = d.type==='garage', isActive = d.active!==false;
+    var cert = CL[d.certification||0], hasGPS = d.lat && d.lng;
+    var suspect = hasGPS && gpsSuspect(d.lat, d.lng, d.city);
+    return "<div class='directory-card' style='"+(suspect?'border-color:#f87171;background:#fef2f2':'')+"'>"
+      +"<div class='directory-top'><div>"
+      +"<div class='directory-name'>"+(isGarage?'🏪':'🔧')+" "+(d.name||'—')
+      +(cert?' <span style="color:#FFD700;font-size:11px;font-weight:700">'+cert+'</span>':'')
+      +(suspect?' <span style="color:#dc2626;font-size:11px;font-weight:700">⚠️ GPS suspect (loin de '+d.city+')</span>':'')+"</div>"
+      +"<div class='directory-meta'>📍 "+(d.city||'—')
+      +(hasGPS?' · <span style="color:'+(suspect?'#dc2626':'#00C26F')+';font-size:11px">📡 '+parseFloat(d.lat).toFixed(3)+', '+parseFloat(d.lng).toFixed(3)+'</span>':'· <span style="color:#f87171;font-size:11px">📡 GPS manquant</span>')
+      +(d.address?' · 🏠 '+d.address.substring(0,40):' · <span style="color:#f59e0b;font-size:11px">🏠 adresse manquante</span>')
+      +" · "+(d.pricing?'💰 Tarifs renseignés':'Tarifs manquants')
+      +" · "+(isActive?'<span style="color:var(--green)">Actif</span>':'<span style="color:var(--muted)">Masqué</span>')
+      +"</div></div></div>"
+      +"<div class='directory-actions' style='flex-wrap:wrap'>"
+      +"<button class='abtn' style='background:var(--bluelt);border-color:var(--bluebdr);color:var(--blue2);font-size:11px' onclick='editDirectoryEntry(\""+d.id+"\")'>✏️ Modifier</button>"
+      +"<button class='abtn' style='background:var(--surface);border-color:var(--border);color:var(--muted);font-size:11px' onclick='toggleActive(\""+d.id+"\","+(isActive?'false':'true')+")'>"+(isActive?'🙈 Masquer':'👁 Réactiver')+"</button>"
+      +"<button class='abtn abtn-del' style='font-size:11px' onclick='deleteFromDirectory(\""+d.id+"\")'>🗑 Retirer</button>"
+      +"</div></div>";
+  }).join("");
+}
+
+function editDirectoryEntry(id){
+  var d = _directory.find(function(x){ return x.id===id; }); if(!d) return;
+  var certVal = parseInt(d.certification||0);
+  var fld = 'width:100%;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit';
+  var lbl = 'font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px';
+  var modal = document.createElement('div');
+  modal.id = 'edit-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.innerHTML = '<div style="background:white;border-radius:16px;padding:1.5rem;max-width:520px;width:100%;max-height:92vh;overflow-y:auto">'
+    +'<h3 style="font-size:16px;font-weight:700;margin-bottom:1rem">✏️ Modifier — '+(d.name||'')+'</h3>'
+
+    // PHOTO / LOGO
+    +'<div style="display:flex;align-items:center;gap:14px;margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid #f3f4f6">'
+    +'<div id="edit-logo-preview" style="width:64px;height:64px;border-radius:50%;background:#EEF1FF;border:2px solid #C7D2FE;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;background-size:cover;background-position:center;'
+    +(d.photo_url?'background-image:url('+d.photo_url+');font-size:0;':'')+'">'+(d.photo_url?'':(d.type==='garage'?'🏪':'👨‍🔧'))+'</div>'
+    +'<div>'
+    +'<label for="edit-logo-file" style="display:inline-block;padding:7px 14px;background:#EEF1FF;border:1.5px solid #C7D2FE;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;color:#0F2ACC">📁 Changer la photo</label>'
+    +'<input type="file" id="edit-logo-file" accept="image/*" style="display:none" onchange="previewEditLogo(this)">'
+    +'<div style="font-size:11px;color:#9ca3af;margin-top:4px">JPG, PNG · compressée automatiquement</div>'
+    +'</div></div>'
+
+    // NOM + TÉLÉPHONE
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:.75rem">'
+    +'<div><label style="'+lbl+'">Nom</label>'
+    +'<input id="edit-name" type="text" value="'+String(d.name||'').replace(/"/g,'&quot;')+'" style="'+fld+'"></div>'
+    +'<div><label style="'+lbl+'">Téléphone</label>'
+    +'<input id="edit-phone" type="tel" value="'+String(d.phone||'').replace(/"/g,'&quot;')+'" placeholder="450-555-0100" style="'+fld+'"></div>'
+    +'</div>'
+
+    // TYPE + VILLE
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:.75rem">'
+    +'<div><label style="'+lbl+'">Type</label>'
+    +'<select id="edit-type" style="'+fld+'">'
+    +'<option value="mecanicien"'+(d.type!=='garage'?' selected':'')+'>🔧 Mécanicien mobile</option>'
+    +'<option value="garage"'+(d.type==='garage'?' selected':'')+'>🏪 Garage</option>'
+    +'</select></div>'
+    +'<div><label style="'+lbl+'">Ville</label>'
+    +'<select id="edit-city" style="'+fld+'">'
+    +['Montréal','Laval','Longueuil','Brossard','Boucherville','Saint-Bruno-de-Montarville','Saint-Lambert','Saint-Hubert','Candiac','La Prairie','Sainte-Catherine','Delson','Saint-Constant','Châteauguay','Mercier','Beauharnois','Salaberry-de-Valleyfield','Vaudreuil-Dorion','L\'Île-Perrot','Pincourt','Sainte-Julie','Varennes','Verchères','Contrecœur','Saint-Amable','Beloeil','Mont-Saint-Hilaire','McMasterville','Otterburn Park','Saint-Basile-le-Grand','Chambly','Carignan','Marieville','Richelieu','Saint-Jean-sur-Richelieu','Saint-Hyacinthe','Sorel-Tracy','Granby','Bromont','Cowansville','Farnham','Saint-Césaire','Acton Vale','Saint-Rémi','Napierville','Huntingdon','Saint-Eustache','Deux-Montagnes','Sainte-Marthe-sur-le-Lac','Boisbriand','Sainte-Thérèse','Blainville','Rosemère','Lorraine','Bois-des-Filion','Mirabel','Saint-Jérôme','Prévost','Saint-Sauveur','Sainte-Adèle','Sainte-Agathe-des-Monts','Mont-Tremblant','Lachute','Saint-Colomban','Mont-Laurier','Terrebonne','Mascouche','Repentigny','Charlemagne','L\'Assomption','Lavaltrie','Saint-Charles-Borromée','Joliette','Notre-Dame-des-Prairies','Rawdon','Berthierville','Saint-Lin-Laurentides','Sainte-Julienne','Québec','L\'Ancienne-Lorette','Saint-Augustin-de-Desmaures','Boischatel','Château-Richer','Beaupré','Stoneham-et-Tewkesbury','Sainte-Brigitte-de-Laval','Shannon','Donnacona','Pont-Rouge','Saint-Raymond','Baie-Saint-Paul','La Malbaie','Lévis','Saint-Georges','Sainte-Marie','Beauceville','Saint-Joseph-de-Beauce','Thetford Mines','Montmagny','Lac-Etchemin','Saint-Henri','Sainte-Croix','Sherbrooke','Magog','Coaticook','Windsor','East Angus','Cookshire-Eaton','Lac-Mégantic','Val-des-Sources','Trois-Rivières','Shawinigan','Louiseville','La Tuque','Sainte-Anne-de-la-Pérade','Drummondville','Victoriaville','Bécancour','Nicolet','Plessisville','Warwick','Kingsey Falls','Gatineau','Cantley','Chelsea','Val-des-Monts','L\'Ange-Gardien','Thurso','Maniwaki','Saguenay','Alma','Dolbeau-Mistassini','Roberval','Saint-Félicien','Chicoutimi','Jonquière','Rimouski','Rivière-du-Loup','Matane','Mont-Joli','Amqui','Trois-Pistoles','Rouyn-Noranda','Val-d\'Or','Amos','La Sarre','Malartic','Ville-Marie','Sept-Îles','Baie-Comeau','Port-Cartier','Gaspé','Chandler','Carleton-sur-Mer','Les Îles-de-la-Madeleine','Sainte-Anne-des-Monts','Chibougamau','Lebel-sur-Quévillon','Matagami','Autre'].map(function(v){
+      return '<option'+(d.city===v?' selected':'')+'>'+v+'</option>';
+    }).join('')
+    +'</select></div>'
+    +'</div>'
+
+    // ADRESSE + GÉOCODAGE
+    +'<div style="margin-bottom:.75rem"><label style="'+lbl+'">Adresse complète (pour GPS précis)</label>'
+    +'<div style="display:flex;gap:6px">'
+    +'<input id="edit-addr" type="text" value="'+String(d.address||'').replace(/"/g,'&quot;')+'" placeholder="1234 Rue Principale, Laval, QC H7T 2K4" style="flex:1;padding:8px 10px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px">'
+    +'<button onclick="geocodeEditAddr(\''+id+'\')" style="padding:8px 12px;background:#1A3CFF;color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">📍 Géocoder</button>'
+    +'</div>'
+    +'<div id="edit-geo-status" style="font-size:11px;margin-top:4px;color:#6B7280"></div>'
+    +'</div>'
+
+    // LAT/LNG
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:.75rem">'
+    +'<div><label style="'+lbl+'">Latitude</label>'
+    +'<input id="edit-lat" type="number" step="any" value="'+(d.lat||'')+'" style="'+fld+'"></div>'
+    +'<div><label style="'+lbl+'">Longitude</label>'
+    +'<input id="edit-lng" type="number" step="any" value="'+(d.lng||'')+'" style="'+fld+'"></div>'
+    +'</div>'
+
+    // CERTIFICATION
+    +'<div style="margin-bottom:.75rem"><label style="'+lbl+'">Certification</label>'
+    +'<select id="edit-cert" style="'+fld+'">'
+    +'<option value="0"'+(certVal===0?' selected':'')+'>Aucune</option>'
+    +'<option value="1"'+(certVal===1?' selected':'')+'>✦ Greaz Certifié</option>'
+    +'<option value="2"'+(certVal===2?' selected':'')+'>✦✦ Greaz Élite</option>'
+    +'<option value="3"'+(certVal===3?' selected':'')+'>✦✦✦ Greaz Premium</option>'
+    +'</select></div>'
+
+    // TARIFS
+    +'<div style="margin-bottom:.75rem"><label style="'+lbl+'">Tarifs (Vidange: 49$, Freins: 149$...)</label>'
+    +'<textarea id="edit-pricing" rows="2" style="'+fld+';resize:vertical">'+(d.pricing||'')+'</textarea></div>'
+
+    // SERVICES
+    +'<div style="margin-bottom:.75rem"><label style="'+lbl+'">Services offerts (séparés par virgule)</label>'
+    +'<input id="edit-services" type="text" value="'+String(d.services||'').replace(/"/g,'&quot;')+'" placeholder="Freins, Vidange, Pneus, Climatisation" style="'+fld+'"></div>'
+
+    // HORAIRES
+    +'<div style="margin-bottom:.75rem"><label style="'+lbl+'">Horaires (format: Lundi: Matin, Après-midi | Mardi: Matin...)</label>'
+    +'<textarea id="edit-schedule" rows="2" style="'+fld+';resize:vertical">'+(d.schedule&&d.schedule!=='Non précisé'?d.schedule:'')+'</textarea></div>'
+
+    // BIO
+    +'<div style="margin-bottom:1.25rem"><label style="'+lbl+'">Bio / Description</label>'
+    +'<textarea id="edit-bio" rows="3" style="'+fld+';resize:vertical">'+(d.bio||'')+'</textarea></div>'
+
+    +'<div style="display:flex;gap:8px">'
+    +'<button id="edit-save-btn" onclick="saveDirectoryEntry(\''+id+'\')" style="flex:1;padding:10px;background:#1A3CFF;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">💾 Sauvegarder</button>'
+    +'<button onclick="document.getElementById(\'edit-modal\').remove()" style="padding:10px 16px;background:#f3f4f6;border:none;border-radius:8px;font-size:14px;cursor:pointer">Annuler</button>'
+    +'</div></div>';
+  document.body.appendChild(modal);
+}
+
+function previewEditLogo(input){
+  var file = input.files[0]; if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var el = document.getElementById('edit-logo-preview');
+    el.style.backgroundImage = 'url('+e.target.result+')';
+    el.style.fontSize = '0';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function uploadEditLogo(){
+  var input = document.getElementById('edit-logo-file');
+  if(!input || !input.files || !input.files[0]) return null;
+  var file = input.files[0];
+  return new Promise(function(resolve, reject){
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var img = new Image();
+      img.onload = function(){
+        var canvas = document.createElement('canvas');
+        var maxSize = 400;
+        var ratio = Math.min(maxSize/img.width, maxSize/img.height, 1);
+        canvas.width = img.width*ratio;
+        canvas.height = img.height*ratio;
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(function(blob){
+          var ref = firebase.storage().ref('logos/annuaire/'+Date.now()+'.jpg');
+          ref.put(blob).then(function(snap){
+            snap.ref.getDownloadURL().then(resolve).catch(reject);
+          }).catch(reject);
+        }, 'image/jpeg', 0.75);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function geocodeEditAddr(id){
+  var addr = (document.getElementById('edit-addr').value||'').trim();
+  var status = document.getElementById('edit-geo-status');
+  if(!addr){ status.textContent = 'Entre une adresse.'; status.style.color='#ef4444'; return; }
+  status.textContent = '⏳ Géocodage en cours...'; status.style.color='#6B7280';
+  try {
+    var res = await fetch('https://nominatim.openstreetmap.org/search?q='+encodeURIComponent(addr+', Canada')+'&format=json&limit=1&countrycodes=ca');
+    var data = await res.json();
+    if(data.length > 0){
+      var lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+      document.getElementById('edit-lat').value = lat.toFixed(6);
+      document.getElementById('edit-lng').value = lng.toFixed(6);
+      status.textContent = '✅ Coordonnées trouvées : '+lat.toFixed(4)+', '+lng.toFixed(4);
+      status.style.color = '#059669';
+    } else {
+      status.textContent = '❌ Adresse non trouvée — essaie d\'être plus précis.';
+      status.style.color = '#ef4444';
+    }
+  } catch(e){
+    status.textContent = '❌ Erreur réseau.'; status.style.color='#ef4444';
+  }
+}
+
+async function saveDirectoryEntry(id){
+  var btn = document.getElementById('edit-save-btn');
+  btn.disabled = true; btn.textContent = '⏳ Sauvegarde...';
+
+  var updates = {
+    name: (document.getElementById('edit-name').value||'').trim(),
+    phone: (document.getElementById('edit-phone').value||'').trim(),
+    certification: parseInt(document.getElementById('edit-cert').value||'0'),
+    pricing: (document.getElementById('edit-pricing').value||'').trim(),
+    services: (document.getElementById('edit-services').value||'').trim(),
+    schedule: (document.getElementById('edit-schedule').value||'').trim() || 'Non précisé',
+    bio: (document.getElementById('edit-bio').value||'').trim(),
+    lat: parseFloat(document.getElementById('edit-lat').value)||null,
+    lng: parseFloat(document.getElementById('edit-lng').value)||null,
+    address: (document.getElementById('edit-addr').value||'').trim(),
+    type: document.getElementById('edit-type').value,
+    city: document.getElementById('edit-city').value,
+    updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+  };
+
+  // Upload photo si une nouvelle a été choisie
+  try {
+    var photoUrl = await uploadEditLogo();
+    if(photoUrl) updates.photo_url = photoUrl;
+  } catch(e){
+    alert('Photo non uploadée ('+e.message+') — le reste sera sauvegardé quand même.');
+  }
+
+  db.collection('mechanics_public').doc(id).update(updates).then(function(){
+    document.getElementById('edit-modal').remove();
+    loadAnnuaireData();
+  }).catch(function(e){
+    alert('Erreur : '+e.message);
+    btn.disabled = false; btn.textContent = '💾 Sauvegarder';
+  });
+}
+
+function toggleActive(id, newVal){
+  db.collection("mechanics_public").doc(id).update({active: newVal === 'true' || newVal === true}).then(function(){
+    loadAnnuaireData();
+  });
+}
+function deleteFromDirectory(id){
+  if(!confirm("Retirer ce professionnel de l'annuaire public ?")) return;
+  db.collection("mechanics_public").doc(id).delete().then(function(){ loadAnnuaireData(); });
+}
+
+async function geocodeAll(force){
+  var btn = document.getElementById('geocode-all-btn');
+  btn.disabled = true;
+
+  var snap = await db.collection('mechanics_public').get();
+  var toFix = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
+    .filter(function(data){
+      if(force) return true; // re-géocode TOUT
+      return !data.lat || !data.lng || isNaN(parseFloat(data.lat));
+    });
+
+  if(!toFix.length){
+    btn.textContent = '✅ Tous ont déjà un GPS';
+    setTimeout(function(){ btn.disabled=false; btn.textContent='📍 Géocoder les GPS manquants'; loadAnnuaireData(); }, 2000);
+    return;
+  }
+
+  var okCount = 0, failCount = 0;
+  for(var i=0; i<toFix.length; i++){
+    var d = toFix[i];
+    btn.textContent = '⏳ '+(i+1)+'/'+toFix.length+' — '+d.name+'...';
+
+    // PRIORITÉ : adresse complète. Si pas d'adresse ET ville invalide → skip
+    var geocodeStr = null;
+    if(d.address && d.address.trim().length > 5){
+      geocodeStr = d.address + ', Canada';
+    } else if(d.city && d.city !== 'Autre'){
+      geocodeStr = d.city + ', Québec, Canada';
+    }
+
+    if(!geocodeStr){
+      console.log('SKIP (pas d\'adresse ni ville valide):', d.name);
+      failCount++;
+      continue;
+    }
+
+    try {
+      var res = await fetch('https://nominatim.openstreetmap.org/search?q='+encodeURIComponent(geocodeStr)+'&format=json&limit=1&countrycodes=ca');
+      var data = await res.json();
+      if(data.length > 0){
+        var lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+        await db.collection('mechanics_public').doc(d.id).update({ lat:lat, lng:lng });
+        okCount++;
+        console.log('GPS ok:', d.name, lat, lng, '←', geocodeStr);
+      } else {
+        failCount++;
+        console.log('GPS INTROUVABLE:', d.name, '←', geocodeStr);
+      }
+    } catch(e){ failCount++; console.log('Erreur:', d.name, e); }
+
+    await new Promise(function(r){ setTimeout(r, 1200); });
+  }
+
+  btn.textContent = '✅ '+okCount+' géocodés' + (failCount>0 ? ' · ⚠️ '+failCount+' échoués (voir ✏️)' : '');
+  setTimeout(function(){
+    btn.disabled=false;
+    btn.textContent='📍 Géocoder les GPS manquants';
+    loadAnnuaireData();
+  }, 4000);
+}
+
+function toggleGarageForm(){
+  var f = document.getElementById("garage-form");
+  f.style.display = f.style.display === "none" ? "block" : "none";
+}
+
+async function submitGarage(){
+  var nom = (document.getElementById("ga_nom").value||"").trim();
+  var ville = document.getElementById("ga_ville").value;
+  if(!nom || !ville){ alert("Le nom et la ville sont obligatoires."); return; }
+
+  // Géocodage automatique
+  var lat = null, lng = null;
+  try {
+    var gRes = await fetch('https://nominatim.openstreetmap.org/search?q='+encodeURIComponent(nom+', '+ville+', Québec, Canada')+'&format=json&limit=1');
+    var gData = await gRes.json();
+    if(gData.length>0){ lat=parseFloat(gData[0].lat); lng=parseFloat(gData[0].lon); }
+    else {
+      var gRes2 = await fetch('https://nominatim.openstreetmap.org/search?q='+encodeURIComponent(ville+', Québec, Canada')+'&format=json&limit=1');
+      var gData2 = await gRes2.json();
+      if(gData2.length>0){ lat=parseFloat(gData2[0].lat); lng=parseFloat(gData2[0].lon); }
+    }
+  } catch(e){ console.log('Geocoding failed:', e); }
+
+  db.collection("mechanics_public").add({
+    name: nom, type: "garage", city: ville,
+    phone: (document.getElementById("ga_phone").value||"").trim(),
+    vehicle_types: (document.getElementById("ga_vehicules").value||"").trim(),
+    services: (document.getElementById("ga_services").value||"").trim(),
+    schedule: (document.getElementById("ga_horaires").value||"").trim() || "Non précisé",
+    pricing: (document.getElementById("ga_pricing").value||"").trim(),
+    bio: (document.getElementById("ga_bio").value||"").trim(),
+    certification: parseInt(document.getElementById("ga_cert").value||"0"),
+    lat: lat, lng: lng,
+    active: true,
+    created_at: firebase.firestore.FieldValue.serverTimestamp(),
+  }).then(function(){
+    ["ga_nom","ga_phone","ga_vehicules","ga_services","ga_horaires","ga_bio","ga_pricing"].forEach(function(id){
+      document.getElementById(id).value = "";
+    });
+    document.getElementById("ga_ville").value = "";
+    document.getElementById("ga_cert").value = "0";
+    toggleGarageForm();
+    loadAnnuaireData();
+  }).catch(function(e){ alert("Erreur : "+e.message); });
+}
+
+/* ══════════ ACTIONS COMMUNES ══════════ */
+function toggleCard(id){
+  var b = document.getElementById("body-"+id);
+  if(b) b.classList.toggle("open");
+}
+function setLeadStatus(id, status){
+  db.collection("leads").doc(id).update({status:status, updated_at:firebase.firestore.FieldValue.serverTimestamp()})
+    .then(function(){
+      var item = _leads.find(function(l){ return l.id===id; });
+      if(item) item.status = status;
+      updateStats(); renderLeads();
+      setTimeout(function(){ var b=document.getElementById("body-"+id); if(b) b.classList.add("open"); }, 50);
+    });
+}
+function setMecStatus(id, status){
+  db.collection("mechanic_applications").doc(id).update({status:status, updated_at:firebase.firestore.FieldValue.serverTimestamp()})
+    .then(function(){
+      var item = _mecs.find(function(m){ return m.id===id; });
+      if(item) item.status = status;
+      updateStats(); renderMecs();
+      if(status === "integre") loadAnnuaireData();
+      setTimeout(function(){ var b=document.getElementById("body-"+id); if(b) b.classList.add("open"); }, 50);
+    });
+}
+function addNote(id, col){
+  var input = document.getElementById("note-input-"+id);
+  var text = input && input.value.trim();
+  if(!text) return;
+  var newNote = {text:text, author:"Équipe Greaz", time:new Date().toLocaleString("fr-CA")};
+  var arr = col==="leads" ? _leads : _mecs;
+  var item = arr.find(function(x){ return x.id===id; });
+  var notes = (item && item.notes) || [];
+  notes.push(newNote);
+  db.collection(col).doc(id).update({notes:notes}).then(function(){
+    if(item) item.notes = notes;
+    if(col==="leads") renderLeads(); else renderMecs();
+    setTimeout(function(){ var b=document.getElementById("body-"+id); if(b) b.classList.add("open"); }, 50);
+  });
+}
+function deleteLead(id){
+  if(!confirm("Supprimer cette demande ?")) return;
+  db.collection("leads").doc(id).delete().then(function(){
+    _leads = _leads.filter(function(l){ return l.id!==id; });
+    updateStats(); renderLeads();
+  });
+}
+function deleteMec(id){
+  if(!confirm("Supprimer cette candidature ?")) return;
+  db.collection("mechanic_applications").doc(id).delete().then(function(){
+    _mecs = _mecs.filter(function(m){ return m.id!==id; });
+    updateStats(); renderMecs();
+  });
+}
+
+/* ══════════ STATS ══════════ */
+function updateStats(){
+  document.getElementById("st1").textContent = _leads.filter(function(l){ return !l.status||l.status==="nouveau"; }).length;
+  document.getElementById("st2").textContent = _leads.filter(function(l){ return l.status==="urgent"; }).length;
+  document.getElementById("st3").textContent = _leads.filter(function(l){ return l.status==="en-cours"; }).length;
+  document.getElementById("st4").textContent = _leads.filter(function(l){ return l.status==="rappel"; }).length;
+  document.getElementById("st-paye").textContent = _leads.filter(function(l){ return l.status==="paye"; }).length;
+  document.getElementById("st5").textContent = _leads.filter(function(l){ return l.status==="traite"; }).length;
+  document.getElementById("st6").textContent = _mecs.filter(function(m){ return !m.status||m.status==="nouveau"; }).length;
+  document.getElementById("st7").textContent = _rdvs.filter(function(a){ return !a.status||a.status==="en_attente"; }).length;
+  document.getElementById("tb1").textContent = _leads.filter(function(l){ return !l.status||l.status==="nouveau"; }).length;
+  document.getElementById("tb2").textContent = _mecs.filter(function(m){ return !m.status||m.status==="nouveau"; }).length;
+  document.getElementById("tb3").textContent = _rdvs.filter(function(a){ return !a.status||a.status==="en_attente"; }).length;
+}
+
+/* ══════════ HORAIRES PAR DÉFAUT ══════════ */
+var _scheduleTemplate = {
+  'Lundi': {'Matin':true,'Après-midi':true,'Soir':false},
+  'Mardi': {'Matin':true,'Après-midi':true,'Soir':false},
+  'Mercredi': {'Matin':true,'Après-midi':true,'Soir':false},
+  'Jeudi': {'Matin':true,'Après-midi':true,'Soir':false},
+  'Vendredi': {'Matin':true,'Après-midi':true,'Soir':false},
+  'Samedi': {'Matin':false,'Après-midi':false,'Soir':false},
+  'Dimanche': {'Matin':false,'Après-midi':false,'Soir':false}
+};
+
+function openScheduleTemplate(){
+  var modal = document.createElement('div');
+  modal.id = 'schedule-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  
+  var container = document.createElement('div');
+  container.style.cssText = 'background:white;border-radius:14px;padding:1.5rem;max-width:550px;width:100%;max-height:92vh;overflow-y:auto';
+  
+  var h = document.createElement('h3');
+  h.textContent = '⏰ Horaires par défaut';
+  h.style.cssText = 'font-size:15px;font-weight:700;margin-bottom:1rem';
+  container.appendChild(h);
+  
+  var p = document.createElement('p');
+  p.textContent = 'Configure les créneaux disponibles pour chaque jour (appliqué à tous les garages) :';
+  p.style.cssText = 'font-size:12px;color:#6B7280;margin-bottom:.75rem';
+  container.appendChild(p);
+  
+  var table = document.createElement('table');
+  table.style.cssText = 'width:100%;border-collapse:collapse;margin-bottom:1rem';
+  
+  var tr = table.insertRow();
+  tr.innerHTML = '<th style="text-align:left;padding:8px;background:#f3f4f6;font-weight:700">Jour</th><th style="text-align:center;padding:8px;background:#f3f4f6;font-weight:700;font-size:12px">Matin</th><th style="text-align:center;padding:8px;background:#f3f4f6;font-weight:700;font-size:12px">Après-midi</th><th style="text-align:center;padding:8px;background:#f3f4f6;font-weight:700;font-size:12px">Soir</th>';
+  
+  var days = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+  var slots = ['Matin','Après-midi','Soir'];
+  
+  days.forEach(function(day){
+    var tr = table.insertRow();
+    tr.style.cssText = 'border-bottom:1px solid #e5e7eb';
+    var td = tr.insertCell();
+    td.textContent = day;
+    td.style.cssText = 'padding:10px;font-weight:600';
+    slots.forEach(function(slot){
+      var td = tr.insertCell();
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = _scheduleTemplate[day][slot];
+      cb.onchange = function(){
+        _scheduleTemplate[day][slot] = cb.checked;
+        updateSchedulePreview();
+      };
+      cb.style.cssText = 'cursor:pointer';
+      td.style.cssText = 'text-align:center;padding:10px';
+      td.appendChild(cb);
+    });
+  });
+  container.appendChild(table);
+  
+  var preview = document.createElement('textarea');
+  preview.id = 'schedule-preview';
+  preview.readOnly = true;
+  preview.style.cssText = 'width:100%;height:60px;padding:8px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:11px;font-family:monospace;background:#f9fafb;margin-top:1rem;margin-bottom:1rem;resize:vertical';
+  
+  var updateSchedulePreview = function(){
+    var parts = [];
+    days.forEach(function(day){
+      var active = slots.filter(function(slot){ return _scheduleTemplate[day][slot]; });
+      if(active.length > 0){
+        parts.push(day + ': ' + active.join(', '));
+      }
+    });
+    preview.value = parts.join(' | ');
+  };
+  
+  updateSchedulePreview();
+  container.appendChild(preview);
+  
+  var actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;gap:8px;margin-bottom:.75rem';
+  
+  var btnCopy = document.createElement('button');
+  btnCopy.textContent = '📋 Copier le texte';
+  btnCopy.style.cssText = 'flex:1;padding:10px;background:#1A3CFF;color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer';
+  btnCopy.onclick = function(){
+    preview.select();
+    document.execCommand('copy');
+    alert('Copié !');
+  };
+  actions.appendChild(btnCopy);
+  
+  var btnApply = document.createElement('button');
+  btnApply.textContent = '✓ Appliquer à TOUS';
+  btnApply.style.cssText = 'flex:1;padding:10px;background:#00C26F;color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer';
+  btnApply.onclick = function(){
+    if(confirm('Appliquer cet horaire à TOUS les '+_directory.length+' garages ?')){
+      applyScheduleToAll(preview.value);
+      modal.remove();
+    }
+  };
+  actions.appendChild(btnApply);
+  container.appendChild(actions);
+  
+  var btnClose = document.createElement('button');
+  btnClose.textContent = 'Fermer';
+  btnClose.style.cssText = 'width:100%;padding:10px;background:#f3f4f6;border:none;border-radius:8px;cursor:pointer';
+  btnClose.onclick = function(){ modal.remove(); };
+  container.appendChild(btnClose);
+  
+  modal.appendChild(container);
+  document.body.appendChild(modal);
+}
+
+function applyScheduleToAll(schedule){
+  var btn = event.target;
+  btn.disabled = true;
+  var done = 0;
+  var total = _directory.length;
+  var i = 0;
+  
+  function next(){
+    if(i >= total){
+      alert('✅ '+done+' garage'+(done>1?'s':'')+' mis à jour !');
+      loadAnnuaireData();
+      return;
+    }
+    var d = _directory[i];
+    btn.textContent = '⏳ '+(i+1)+'/'+total;
+    db.collection('mechanics_public').doc(d.id).update({
+      schedule: schedule,
+      updated_at: firebase.firestore.FieldValue.serverTimestamp()
+    }).then(function(){ done++; i++; next(); }).catch(function(){ i++; next(); });
+  }
+  next();
+}
+
+/* ══════════ REVENDICATIONS (CLAIMS) ══════════ */
+function loadClaims(){
+  var el = document.getElementById('claims-list');
+  el.innerHTML = '<div class="loading"><span class="spinner"></span>Chargement...</div>';
+  db.collection('claims').get().then(function(snap){
+    _claims = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    _claims.sort(function(a,b){
+      var da = a.created_at&&a.created_at.toDate ? a.created_at.toDate() : new Date(0);
+      var db2 = b.created_at&&b.created_at.toDate ? b.created_at.toDate() : new Date(0);
+      return db2 - da;
+    });
+    var pending = _claims.filter(function(c){ return !c.status || c.status==='pending'; });
+    document.getElementById('tb5').textContent = pending.length;
+    renderClaims();
+  }).catch(function(e){
+    el.innerHTML = '<div class="loading">⚠️ '+e.message+'</div>';
+  });
+}
+
+function renderClaims(){
+  var el = document.getElementById('claims-list');
+  var pending = _claims.filter(function(c){ return !c.status || c.status==='pending'; });
+  if(!pending.length){
+    el.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:1rem 0">Aucune demande de revendication en attente. 🎉</div>';
+    return;
+  }
+  el.innerHTML = pending.map(function(c){
+    var date = c.created_at&&c.created_at.toDate ? c.created_at.toDate().toLocaleDateString('fr-CA',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+    var improvements = [];
+    if(c.proposed_services) improvements.push('<b>Services:</b> '+c.proposed_services);
+    if(c.proposed_pricing) improvements.push('<b>Tarifs:</b> '+c.proposed_pricing);
+    if(c.proposed_schedule) improvements.push('<b>Horaires:</b> '+c.proposed_schedule);
+    return '<div class="directory-card" style="border-left:4px solid #00C26F">'
+      +'<div class="directory-top"><div style="flex:1">'
+      +'<div class="directory-name">🏪 '+(c.garage_name||'—')+' <span style="font-size:11px;color:var(--muted);font-weight:400">'+(c.garage_city||'')+'</span></div>'
+      +'<div class="directory-meta" style="margin-top:6px;line-height:1.7">'
+      +'👤 <b>'+(c.contact_name||'(nom non fourni)')+'</b><br>'
+      +'📞 <a href="tel:'+(c.phone||'')+'" style="color:var(--blue2)">'+(c.phone||'—')+'</a>'
+      +' · 📧 <a href="mailto:'+(c.email||'')+'" style="color:var(--blue2)">'+(c.email||'—')+'</a><br>'
+      +(improvements.length ? '<div style="margin-top:6px;padding:8px 10px;background:#f0fdf4;border-radius:8px;font-size:11.5px;color:#166534">'+improvements.join('<br>')+'</div>' : '')
+      +(c.message ? '<div style="margin-top:6px;font-style:italic;color:var(--muted)">💬 "'+c.message+'"</div>' : '')
+      +'<div style="margin-top:6px;font-size:11px;color:var(--muted)">🕐 '+date+'</div>'
+      +'</div></div></div>'
+      +'<div class="directory-actions" style="flex-wrap:wrap">'
+      +'<button class="abtn" style="background:#ECFDF5;border-color:#A7F3D0;color:#059669;font-size:12px;font-weight:700" onclick="approveClaim(\''+c.id+'\')">✓ Approuver + activer la fiche</button>'
+      +'<button class="abtn abtn-del" style="font-size:12px" onclick="rejectClaim(\''+c.id+'\')">✕ Rejeter</button>'
+      +'</div></div>';
+  }).join('');
+}
+
+async function approveClaim(claimId){
+  var c = _claims.find(function(x){ return x.id===claimId; });
+  if(!c) return;
+  if(!confirm('Approuver "'+c.garage_name+'" ?\n\nÇa va marquer la fiche comme revendiquée et appliquer les infos fournies par le garage.')) return;
+
+  try {
+    // 1. Met à jour la fiche du garage
+    var garageUpdate = {
+      claimed: true,
+      claimed_at: firebase.firestore.FieldValue.serverTimestamp(),
+      phone: c.phone || '',
+      contact_email: c.email || '',
+      contact_name: c.contact_name || ''
+    };
+    if(c.proposed_services) garageUpdate.services = c.proposed_services;
+    if(c.proposed_pricing) garageUpdate.pricing = c.proposed_pricing;
+    if(c.proposed_schedule) garageUpdate.schedule = c.proposed_schedule;
+
+    await db.collection('mechanics_public').doc(c.garage_id).update(garageUpdate);
+
+    // 2. Marque le claim comme approuvé
+    await db.collection('claims').doc(claimId).update({
+      status: 'approved',
+      approved_at: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    alert('✅ "'+c.garage_name+'" est maintenant revendiqué et activé !\n\nPense à contacter '+(c.contact_name||'le garage')+' au '+c.phone+' pour confirmer.');
+    loadClaims();
+    loadAnnuaireData();
+  } catch(e){
+    alert('Erreur : '+e.message);
+  }
+}
+
+function rejectClaim(claimId){
+  var c = _claims.find(function(x){ return x.id===claimId; });
+  if(!c) return;
+  if(!confirm('Rejeter la demande de "'+c.garage_name+'" ?')) return;
+  db.collection('claims').doc(claimId).update({
+    status: 'rejected',
+    rejected_at: firebase.firestore.FieldValue.serverTimestamp()
+  }).then(function(){
+    loadClaims();
+  }).catch(function(e){ alert('Erreur : '+e.message); });
+}
+
+/* ══════════ AFFILIÉS & CODES DE RÉFÉRENCE ══════════ */
+function loadAffiliates(){
+  var el = document.getElementById('affiliates-list');
+  el.innerHTML = '<div class="loading"><span class="spinner"></span>Chargement...</div>';
+  db.collection('affiliates').get().then(function(snap){
+    _affiliates = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    document.getElementById('tb6').textContent = _affiliates.filter(function(a){ return a.active!==false; }).length;
+    renderAffiliates();
+  }).catch(function(e){
+    el.innerHTML = '<div class="loading">⚠️ '+e.message+'</div>';
+  });
+}
+
+// Compte les demandes attribuées à chaque code (dans leads + appointments)
+function countReferrals(code){
+  var cu = (code||'').toUpperCase();
+  var nLeads = _leads.filter(function(l){ return (l.referral_code||'').toUpperCase() === cu; }).length;
+  var nRdv = _rdvs.filter(function(r){ return (r.referral_code||'').toUpperCase() === cu; }).length;
+  return { leads: nLeads, rdv: nRdv, total: nLeads + nRdv };
+}
+
+function renderAffiliates(){
+  var el = document.getElementById('affiliates-list');
+  if(!_affiliates.length){
+    el.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:1rem 0">Aucun affilié pour l\'instant. Clique "➕ Nouvel affilié" pour créer un code de référence.</div>';
+    return;
+  }
+  _affiliates.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+  el.innerHTML = _affiliates.map(function(a){
+    var stats = countReferrals(a.code);
+    var isActive = a.active !== false;
+    var commissionTxt = a.commission_type === 'fixed'
+      ? (a.commission_value||0)+'$ par RDV'
+      : (a.commission_value||0)+'% par vente';
+    var estimated = a.commission_type === 'fixed'
+      ? (stats.total * (a.commission_value||0))
+      : null; // % nécessite un montant de vente, calculé manuellement
+    return '<div class="directory-card" style="border-left:4px solid #8B5CF6">'
+      +'<div class="directory-top"><div style="flex:1">'
+      +'<div class="directory-name">🎯 '+(a.name||'—')
+      +' <span style="font-family:monospace;background:#F5F3FF;color:#7C3AED;padding:2px 10px;border-radius:6px;font-size:13px;font-weight:700;margin-left:6px">'+(a.code||'')+'</span>'
+      +(isActive?'':' <span style="font-size:11px;color:var(--muted)">(inactif)</span>')+'</div>'
+      +'<div class="directory-meta" style="margin-top:6px;line-height:1.8">'
+      +'💰 Commission : <b>'+commissionTxt+'</b><br>'
+      +'📊 <b>'+stats.total+'</b> demande'+(stats.total!==1?'s':'')+' attribuée'+(stats.total!==1?'s':'')
+      +' <span style="color:var(--muted)">('+stats.leads+' soumissions · '+stats.rdv+' réservations)</span>'
+      +(estimated!==null ? '<br>🧮 Commission estimée : <b style="color:#059669">'+estimated+'$</b>' : '')
+      +(a.email?'<br>📧 '+a.email:'')
+      +'</div></div></div>'
+      +'<div class="directory-actions" style="flex-wrap:wrap">'
+      +'<button class="abtn" style="background:#F5F3FF;border-color:#DDD6FE;color:#7C3AED;font-size:12px" onclick="viewAffiliateReferrals(\''+a.id+'\')">📋 Voir les demandes</button>'
+      +'<button class="abtn" style="background:var(--bluelt);border-color:var(--bluebdr);color:var(--blue2);font-size:12px" onclick="openAffiliateForm(\''+a.id+'\')">✏️ Modifier</button>'
+      +'<button class="abtn" style="background:var(--surface);border-color:var(--border);color:var(--muted);font-size:12px" onclick="toggleAffiliate(\''+a.id+'\','+(isActive?'false':'true')+')">'+(isActive?'🚫 Désactiver':'✓ Activer')+'</button>'
+      +'<button class="abtn abtn-del" style="font-size:12px" onclick="deleteAffiliate(\''+a.id+'\')">🗑</button>'
+      +'</div></div>';
+  }).join('');
+}
+
+function openAffiliateForm(affId){
+  var a = affId ? _affiliates.find(function(x){ return x.id===affId; }) : null;
+  var isEdit = !!a;
+  var fld = 'width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit';
+  var lbl = 'font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px';
+
+  var modal = document.createElement('div');
+  modal.id = 'affiliate-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.innerHTML = '<div style="background:white;border-radius:16px;padding:1.5rem;max-width:460px;width:100%;max-height:92vh;overflow-y:auto">'
+    +'<h3 style="font-size:16px;font-weight:700;margin-bottom:1.25rem">'+(isEdit?'✏️ Modifier l\'affilié':'🎯 Nouvel affilié')+'</h3>'
+
+    +'<div style="margin-bottom:1rem"><label style="'+lbl+'">Nom de l\'affilié *</label>'
+    +'<input id="aff-name" type="text" value="'+(a?String(a.name||'').replace(/"/g,'&quot;'):'')+'" placeholder="Marie Tremblay" style="'+fld+'"></div>'
+
+    +'<div style="margin-bottom:1rem"><label style="'+lbl+'">Code de référence *</label>'
+    +'<input id="aff-code" type="text" value="'+(a?String(a.code||''):'')+'" placeholder="MARIE10" style="'+fld+';text-transform:uppercase;font-family:monospace;font-weight:700" '+(isEdit?'readonly':'')+'>'
+    +(isEdit?'<div style="font-size:11px;color:#9ca3af;margin-top:4px">Le code ne peut pas être modifié (sinon les demandes déjà attribuées seraient perdues).</div>':'<div style="font-size:11px;color:#9ca3af;margin-top:4px">C\'est ce que le client tape à la réservation. Lettres et chiffres, sans espace.</div>')
+    +'</div>'
+
+    +'<div style="margin-bottom:1rem"><label style="'+lbl+'">Courriel <span style="font-weight:400">(optionnel)</span></label>'
+    +'<input id="aff-email" type="email" value="'+(a?String(a.email||''):'')+'" placeholder="marie@courriel.com" style="'+fld+'"></div>'
+
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1.25rem">'
+    +'<div><label style="'+lbl+'">Type de commission</label>'
+    +'<select id="aff-ctype" style="'+fld+'" onchange="document.getElementById(\'aff-cval-label\').textContent=this.value===\'fixed\'?\'Montant ($) par RDV\':\'Pourcentage (%)\'">'
+    +'<option value="fixed"'+(a&&a.commission_type==='fixed'?' selected':'')+'>Montant fixe ($)</option>'
+    +'<option value="percent"'+(a&&a.commission_type==='percent'?' selected':'')+'>Pourcentage (%)</option>'
+    +'</select></div>'
+    +'<div><label style="'+lbl+'" id="aff-cval-label">'+(a&&a.commission_type==='percent'?'Pourcentage (%)':'Montant ($) par RDV')+'</label>'
+    +'<input id="aff-cval" type="number" step="any" value="'+(a?(a.commission_value||''):'')+'" placeholder="10" style="'+fld+'"></div>'
+    +'</div>'
+
+    +'<div style="display:flex;gap:8px">'
+    +'<button id="aff-save-btn" onclick="saveAffiliate('+(isEdit?'\''+affId+'\'':'null')+')" style="flex:1;padding:12px;background:#8B5CF6;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">'+(isEdit?'💾 Enregistrer':'✓ Créer l\'affilié')+'</button>'
+    +'<button onclick="document.getElementById(\'affiliate-modal\').remove()" style="padding:12px 18px;background:#f3f4f6;border:none;border-radius:8px;font-size:14px;cursor:pointer">Annuler</button>'
+    +'</div></div>';
+  document.body.appendChild(modal);
+}
+
+async function saveAffiliate(affId){
+  var name = (document.getElementById('aff-name').value||'').trim();
+  var code = (document.getElementById('aff-code').value||'').trim().toUpperCase().replace(/\s+/g,'');
+  var email = (document.getElementById('aff-email').value||'').trim();
+  var ctype = document.getElementById('aff-ctype').value;
+  var cval = parseFloat(document.getElementById('aff-cval').value)||0;
+
+  if(!name || !code){ alert('Le nom et le code sont obligatoires.'); return; }
+  if(!/^[A-Z0-9]+$/.test(code)){ alert('Le code ne doit contenir que des lettres et des chiffres (sans espace ni symbole).'); return; }
+
+  // Vérifie l'unicité du code (sauf si on édite le même)
+  var dup = _affiliates.find(function(a){ return (a.code||'').toUpperCase()===code && a.id!==affId; });
+  if(dup){ alert('Le code "'+code+'" est déjà utilisé par '+dup.name+'. Choisis-en un autre.'); return; }
+
+  var btn = document.getElementById('aff-save-btn');
+  btn.disabled = true; btn.textContent = '⏳...';
+
+  var data = {
+    name: name, code: code, email: email,
+    commission_type: ctype, commission_value: cval,
+    active: true,
+    updated_at: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  try {
+    if(affId){
+      await db.collection('affiliates').doc(affId).update(data);
+    } else {
+      data.created_at = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection('affiliates').add(data);
+    }
+    document.getElementById('affiliate-modal').remove();
+    loadAffiliates();
+  } catch(e){
+    alert('Erreur : '+e.message);
+    btn.disabled = false; btn.textContent = '💾 Enregistrer';
+  }
+}
+
+function toggleAffiliate(affId, state){
+  db.collection('affiliates').doc(affId).update({ active: state })
+    .then(loadAffiliates)
+    .catch(function(e){ alert('Erreur : '+e.message); });
+}
+
+function deleteAffiliate(affId){
+  var a = _affiliates.find(function(x){ return x.id===affId; });
+  if(!a) return;
+  if(!confirm('Supprimer l\'affilié "'+a.name+'" ?\n\nLes demandes déjà attribuées ne seront pas effacées, mais le code ne sera plus reconnu.')) return;
+  db.collection('affiliates').doc(affId).delete()
+    .then(loadAffiliates)
+    .catch(function(e){ alert('Erreur : '+e.message); });
+}
+
+function viewAffiliateReferrals(affId){
+  var a = _affiliates.find(function(x){ return x.id===affId; });
+  if(!a) return;
+  var cu = (a.code||'').toUpperCase();
+  var refs = [];
+  _leads.forEach(function(l){ if((l.referral_code||'').toUpperCase()===cu) refs.push({type:'Soumission', name:l.client_name, phone:l.client_phone, date:l.created_at, extra:l.problem}); });
+  _rdvs.forEach(function(r){ if((r.referral_code||'').toUpperCase()===cu) refs.push({type:'Réservation', name:(r.client_prenom||'')+' '+(r.client_nom||''), phone:r.client_phone, date:r.created_at, extra:r.mechanic_name}); });
+  refs.sort(function(x,y){
+    var dx = x.date&&x.date.toDate?x.date.toDate():new Date(0);
+    var dy = y.date&&y.date.toDate?y.date.toDate():new Date(0);
+    return dy - dx;
+  });
+
+  var modal = document.createElement('div');
+  modal.id = 'refs-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  var rows = refs.length ? refs.map(function(r){
+    var d = r.date&&r.date.toDate ? r.date.toDate().toLocaleDateString('fr-CA',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+    return '<tr style="border-bottom:1px solid #f3f4f6">'
+      +'<td style="padding:8px 10px;font-size:12px"><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;background:'+(r.type==='Réservation'?'#EEF1FF;color:#0F2ACC':'#F0FDF4;color:#059669')+'">'+r.type+'</span></td>'
+      +'<td style="padding:8px 10px;font-size:12.5px;font-weight:600">'+(r.name||'—')+'</td>'
+      +'<td style="padding:8px 10px;font-size:12px"><a href="tel:'+(r.phone||'')+'" style="color:var(--blue2)">'+(r.phone||'—')+'</a></td>'
+      +'<td style="padding:8px 10px;font-size:11px;color:#6B7280">'+d+'</td>'
+      +'</tr>';
+  }).join('') : '<tr><td colspan="4" style="padding:1.5rem;text-align:center;color:#9ca3af;font-size:13px">Aucune demande attribuée à ce code pour l\'instant.</td></tr>';
+
+  modal.innerHTML = '<div style="background:white;border-radius:16px;padding:1.5rem;max-width:600px;width:100%;max-height:88vh;overflow-y:auto">'
+    +'<h3 style="font-size:16px;font-weight:700;margin-bottom:.25rem">📋 Demandes de '+a.name+'</h3>'
+    +'<div style="font-size:13px;color:#6B7280;margin-bottom:1rem">Code <b style="font-family:monospace;color:#7C3AED">'+a.code+'</b> · '+refs.length+' demande'+(refs.length!==1?'s':'')+'</div>'
+    +'<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f9fafb">'
+    +'<th style="text-align:left;padding:8px 10px;font-size:11px;color:#6B7280">Type</th>'
+    +'<th style="text-align:left;padding:8px 10px;font-size:11px;color:#6B7280">Client</th>'
+    +'<th style="text-align:left;padding:8px 10px;font-size:11px;color:#6B7280">Téléphone</th>'
+    +'<th style="text-align:left;padding:8px 10px;font-size:11px;color:#6B7280">Date</th>'
+    +'</tr></thead><tbody>'+rows+'</tbody></table>'
+    +'<button onclick="document.getElementById(\'refs-modal\').remove()" style="margin-top:1.25rem;width:100%;padding:11px;background:#f3f4f6;border:none;border-radius:8px;cursor:pointer;font-size:14px">Fermer</button>'
+    +'</div>';
+  document.body.appendChild(modal);
+}
+
+/* ══════════ GESTION DE L'ÉQUIPE (fondateur seulement) ══════════ */
+var _team = [];
+
+var ROLES = {
+  founder:      { icon:'👑', label:'Fondateur',    color:'#D97706', bg:'#FEF3C7', desc:'Accès total + gestion de l\'équipe' },
+  gestionnaire: { icon:'🛠️', label:'Gestionnaire', color:'#0F2ACC', bg:'#EEF1FF', desc:'Tout sauf la gestion de l\'équipe' },
+  support:      { icon:'💬', label:'Support',      color:'#059669', bg:'#ECFDF5', desc:'Demandes clients uniquement' },
+};
+
+function loadTeam(){
+  var el = document.getElementById('team-list');
+  db.collection('admins').get().then(function(snap){
+    _team = snap.docs.map(function(d){ return Object.assign({uid:d.id}, d.data()); });
+    if(isFounder()){
+      document.getElementById('tb7').textContent = _team.length;
+      renderTeam();
+    }
+  }).catch(function(e){
+    if(el && isFounder()) el.innerHTML = '<div class="loading">⚠️ '+e.message+'</div>';
+  });
+}
+
+function renderTeam(){
+  var el = document.getElementById('team-list');
+  if(!_team.length){
+    el.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:1rem 0">Aucun membre.</div>';
+    return;
+  }
+  // Fondateurs en premier
+  var order = { founder:0, gestionnaire:1, support:2 };
+  _team.sort(function(a,b){ return (order[a.role]||9) - (order[b.role]||9); });
+
+  el.innerHTML = _team.map(function(m){
+    var r = ROLES[m.role] || ROLES.support;
+    var isMe = currentAdmin && m.uid === currentAdmin.uid;
+    return '<div class="directory-card" style="border-left:4px solid '+r.color+'">'
+      +'<div class="directory-top"><div style="flex:1">'
+      +'<div class="directory-name">'+r.icon+' '+(m.name || m.email || '—')
+      +' <span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:8px;background:'+r.bg+';color:'+r.color+';margin-left:6px">'+r.label+'</span>'
+      +(isMe?' <span style="font-size:11px;color:var(--muted);font-weight:400">(toi)</span>':'')
+      +'</div>'
+      +'<div class="directory-meta" style="margin-top:5px">📧 '+(m.email||'—')
+      +'<br><span style="font-size:10.5px;color:#9ca3af;font-family:monospace">'+m.uid.substring(0,16)+'...</span></div>'
+      +'</div></div>'
+      +(isMe ? '' :
+        '<div class="directory-actions" style="flex-wrap:wrap">'
+        +'<button class="abtn" style="background:var(--bluelt);border-color:var(--bluebdr);color:var(--blue2);font-size:12px" onclick="changeRole(\''+m.uid+'\')">🔄 Changer le rôle</button>'
+        +'<button class="abtn abtn-del" style="font-size:12px" onclick="removeTeamMember(\''+m.uid+'\')">🗑 Retirer l\'accès</button>'
+        +'</div>')
+      +'</div>';
+  }).join('');
+}
+
+function openTeamForm(){
+  if(!isFounder()){ alert('Seul le fondateur peut ajouter des membres.'); return; }
+  var fld = 'width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit';
+  var lbl = 'font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px';
+
+  var modal = document.createElement('div');
+  modal.id = 'team-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.innerHTML = '<div style="background:white;border-radius:16px;padding:1.5rem;max-width:460px;width:100%;max-height:92vh;overflow-y:auto">'
+    +'<h3 style="font-size:16px;font-weight:700;margin-bottom:.35rem">👥 Ajouter un employé</h3>'
+    +'<p style="font-size:12.5px;color:#6B7280;margin-bottom:1.25rem">Le compte sera créé et l\'employé pourra se connecter immédiatement.</p>'
+
+    +'<div style="margin-bottom:1rem"><label style="'+lbl+'">Nom de l\'employé *</label>'
+    +'<input id="team-name" type="text" placeholder="Marie Tremblay" style="'+fld+'"></div>'
+
+    +'<div style="margin-bottom:1rem"><label style="'+lbl+'">Courriel *</label>'
+    +'<input id="team-email" type="email" placeholder="marie@greaz.ca" style="'+fld+'"></div>'
+
+    +'<div style="margin-bottom:1rem"><label style="'+lbl+'">Mot de passe temporaire *</label>'
+    +'<input id="team-pass" type="text" placeholder="min. 6 caractères" style="'+fld+';font-family:monospace">'
+    +'<div style="font-size:11px;color:#9ca3af;margin-top:4px">Communique-le à l\'employé. Il pourra le changer plus tard.</div></div>'
+
+    +'<div style="margin-bottom:1.25rem"><label style="'+lbl+'">Niveau d\'accès *</label>'
+    +'<select id="team-role" style="'+fld+'">'
+    +'<option value="support">💬 Support — demandes clients seulement</option>'
+    +'<option value="gestionnaire">🛠️ Gestionnaire — tout sauf l\'équipe</option>'
+    +'<option value="founder">👑 Fondateur — accès total</option>'
+    +'</select></div>'
+
+    +'<div id="team-err" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:9px 12px;border-radius:8px;font-size:12.5px;margin-bottom:1rem"></div>'
+
+    +'<div style="display:flex;gap:8px">'
+    +'<button id="team-save-btn" onclick="createTeamMember()" style="flex:1;padding:12px;background:#0EA5E9;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">✓ Créer le compte</button>'
+    +'<button onclick="document.getElementById(\'team-modal\').remove()" style="padding:12px 18px;background:#f3f4f6;border:none;border-radius:8px;font-size:14px;cursor:pointer">Annuler</button>'
+    +'</div></div>';
+  document.body.appendChild(modal);
+}
+
+async function createTeamMember(){
+  var name = (document.getElementById('team-name').value||'').trim();
+  var email = (document.getElementById('team-email').value||'').trim();
+  var pass = document.getElementById('team-pass').value||'';
+  var role = document.getElementById('team-role').value;
+  var errEl = document.getElementById('team-err');
+  var btn = document.getElementById('team-save-btn');
+
+  function showErr(m){ errEl.textContent = m; errEl.style.display='block'; btn.disabled=false; btn.textContent='✓ Créer le compte'; }
+
+  errEl.style.display = 'none';
+  if(!name || !email || !pass){ showErr('Tous les champs sont obligatoires.'); return; }
+  if(pass.length < 6){ showErr('Le mot de passe doit faire au moins 6 caractères.'); return; }
+  if(email.indexOf('@') === -1){ showErr('Courriel invalide.'); return; }
+
+  btn.disabled = true; btn.textContent = '⏳ Création...';
+
+  // ASTUCE : on utilise une 2e instance Firebase pour créer le compte
+  // sans déconnecter l'admin actuellement connecté.
+  var secondaryApp = null;
+  try {
+    var cfg = firebase.app().options;
+    try { secondaryApp = firebase.app('secondary'); }
+    catch(e){ secondaryApp = firebase.initializeApp(cfg, 'secondary'); }
+
+    var cred = await secondaryApp.auth().createUserWithEmailAndPassword(email, pass);
+    var newUid = cred.user.uid;
+
+    // Déconnecte l'instance secondaire (l'admin reste connecté sur la principale)
+    await secondaryApp.auth().signOut();
+
+    // Crée le document admin
+    await db.collection('admins').doc(newUid).set({
+      name: name,
+      email: email,
+      role: role,
+      created_at: firebase.firestore.FieldValue.serverTimestamp(),
+      created_by: currentAdmin ? currentAdmin.email : '',
+    });
+
+    document.getElementById('team-modal').remove();
+    alert('✅ Compte créé !\n\n'+name+' ('+email+')\nRôle : '+ROLES[role].label+'\n\nCommunique-lui ces identifiants :\nCourriel : '+email+'\nMot de passe : '+pass);
+    loadTeam();
+  } catch(e){
+    var msg = e.message;
+    if(e.code === 'auth/email-already-in-use') msg = 'Ce courriel a déjà un compte Firebase. Utilise un autre courriel, ou ajoute son UID manuellement dans la console.';
+    if(e.code === 'auth/weak-password') msg = 'Mot de passe trop faible (min. 6 caractères).';
+    if(e.code === 'auth/operation-not-allowed') msg = 'La création de comptes est désactivée. Va dans Firebase Console → Authentication → Paramètres → réactive "Créer (inscription)".';
+    showErr(msg);
+  }
+}
+
+function changeRole(uid){
+  var m = _team.find(function(x){ return x.uid===uid; });
+  if(!m) return;
+  var choix = prompt(
+    'Nouveau rôle pour '+(m.name||m.email)+' ?\n\n'
+    +'Tape :\n'
+    +'  1  →  💬 Support (demandes clients seulement)\n'
+    +'  2  →  🛠️ Gestionnaire (tout sauf l\'équipe)\n'
+    +'  3  →  👑 Fondateur (accès total)\n\n'
+    +'Rôle actuel : '+(ROLES[m.role]||ROLES.support).label
+  );
+  if(!choix) return;
+  var map = {'1':'support','2':'gestionnaire','3':'founder'};
+  var newRole = map[choix.trim()];
+  if(!newRole){ alert('Choix invalide. Tape 1, 2 ou 3.'); return; }
+
+  db.collection('admins').doc(uid).update({ role: newRole })
+    .then(function(){
+      alert('✅ '+(m.name||m.email)+' est maintenant '+ROLES[newRole].label+'.');
+      loadTeam();
+    })
+    .catch(function(e){ alert('Erreur : '+e.message); });
+}
+
+function removeTeamMember(uid){
+  var m = _team.find(function(x){ return x.uid===uid; });
+  if(!m) return;
+  if(!confirm('Retirer l\'accès de '+(m.name||m.email)+' ?\n\nIl ne pourra plus entrer dans le dashboard.\n\n(Son compte Firebase existe encore — pour le supprimer complètement, va dans Firebase Console → Authentication.)')) return;
+
+  db.collection('admins').doc(uid).delete()
+    .then(function(){ loadTeam(); })
+    .catch(function(e){ alert('Erreur : '+e.message); });
+}
+
+/* ══════════ WORKFLOW / CRM D'ÉQUIPE ══════════ */
+var _workflow = [];
+var _viewingMemberUid = null; // si le fondateur regarde le travail d'un membre précis
+
+var WF_STATUS = {
+  a_contacter:   { icon:'🆕', label:'À contacter',   color:'#0F2ACC', bg:'#EEF1FF' },
+  en_discussion: { icon:'💬', label:'En discussion', color:'#7C3AED', bg:'#F5F3FF' },
+  a_rappeler:    { icon:'📞', label:'À rappeler',    color:'#D97706', bg:'#FEF3C7' },
+  en_attente:    { icon:'⏳', label:'En attente',    color:'#6B7280', bg:'#F3F4F6' },
+  rdv_pris:      { icon:'📅', label:'RDV pris',      color:'#0891B2', bg:'#ECFEFF' },
+  converti:      { icon:'✅', label:'Converti',      color:'#059669', bg:'#ECFDF5' },
+  pas_interesse: { icon:'❌', label:'Pas intéressé', color:'#DC2626', bg:'#FEF2F2' },
+};
+
+function loadWorkflow(){
+  var el = document.getElementById('workflow-list');
+  el.innerHTML = '<div class="loading"><span class="spinner"></span>Chargement...</div>';
+  db.collection('workflow').get().then(function(snap){
+    _workflow = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    // Remplir le filtre "propriétaire" pour le fondateur
+    if(isFounder()){
+      var sel = document.getElementById('wf-filter-owner');
+      sel.style.display = '';
+      var owners = {};
+      _workflow.forEach(function(w){ if(w.owner_email) owners[w.owner_email] = w.owner_name||w.owner_email; });
+      var opts = '<option value="">Toute l\'équipe</option>';
+      Object.keys(owners).forEach(function(email){
+        opts += '<option value="'+email+'"'+(_viewingMemberUid===email?' selected':'')+'>'+owners[email]+'</option>';
+      });
+      sel.innerHTML = opts;
+    }
+    renderWorkflow();
+  }).catch(function(e){
+    el.innerHTML = '<div class="loading">⚠️ '+e.message+'</div>';
+  });
+}
+
+function renderWorkflow(){
+  var el = document.getElementById('workflow-list');
+  var header = document.getElementById('wf-header');
+  var fStatus = document.getElementById('wf-filter-status').value;
+  var fType = document.getElementById('wf-filter-type').value;
+  var fOwner = isFounder() ? document.getElementById('wf-filter-owner').value : '';
+
+  var list = _workflow.slice();
+
+  // Support/gestionnaire : voit SEULEMENT ses propres prospects
+  // Fondateur : voit tout, ou filtre par membre
+  if(!isFounder()){
+    list = list.filter(function(w){ return w.owner_uid === currentAdmin.uid; });
+    header.textContent = '🗂 Mes prospects';
+  } else {
+    if(fOwner){
+      list = list.filter(function(w){ return w.owner_email === fOwner; });
+      header.textContent = '🗂 Prospects de ' + fOwner;
+    } else {
+      header.textContent = '🗂 Tous les prospects de l\'équipe';
+    }
+  }
+
+  if(fStatus) list = list.filter(function(w){ return w.status === fStatus; });
+  if(fType) list = list.filter(function(w){ return w.prospect_type === fType; });
+
+  document.getElementById('tb8').textContent = isFounder()
+    ? _workflow.length
+    : _workflow.filter(function(w){ return w.owner_uid === currentAdmin.uid; }).length;
+
+  // Tri : à rappeler et à contacter en premier, puis par date de mise à jour
+  var prio = { a_rappeler:0, a_contacter:1, en_discussion:2, en_attente:3, rdv_pris:4, converti:5, pas_interesse:6 };
+  list.sort(function(a,b){
+    var pa = prio[a.status]!==undefined?prio[a.status]:9;
+    var pb = prio[b.status]!==undefined?prio[b.status]:9;
+    if(pa!==pb) return pa-pb;
+    var da = a.updated_at&&a.updated_at.toDate?a.updated_at.toDate():new Date(0);
+    var db2 = b.updated_at&&b.updated_at.toDate?b.updated_at.toDate():new Date(0);
+    return db2-da;
+  });
+
+  if(!list.length){
+    el.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:1.5rem 0;text-align:center">Aucun prospect'+(fStatus||fType?' pour ce filtre':'')+'. Clique "➕ Nouveau prospect" pour commencer.</div>';
+    return;
+  }
+
+  el.innerHTML = list.map(function(w){
+    var s = WF_STATUS[w.status] || WF_STATUS.a_contacter;
+    var isGarage = w.prospect_type === 'garage';
+    var lastNote = (w.notes && w.notes.length) ? w.notes[w.notes.length-1] : null;
+    var callbackBadge = '';
+    if(w.status === 'a_rappeler' && w.callback_date){
+      callbackBadge = '<span style="font-size:11px;font-weight:700;color:#D97706;background:#FEF3C7;padding:2px 9px;border-radius:8px;margin-left:6px">📞 '+w.callback_date+(w.callback_time?' '+w.callback_time:'')+'</span>';
+    }
+    return '<div class="directory-card" style="border-left:4px solid '+s.color+'">'
+      +'<div class="directory-top"><div style="flex:1">'
+      +'<div class="directory-name">'+(isGarage?'🏪':'🔧')+' '+(w.name||'—')
+      +' <span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:8px;background:'+s.bg+';color:'+s.color+';margin-left:6px">'+s.icon+' '+s.label+'</span>'
+      +callbackBadge+'</div>'
+      +'<div class="directory-meta" style="margin-top:6px;line-height:1.7">'
+      +(w.phone?'📞 <a href="tel:'+w.phone+'" style="color:var(--blue2)">'+w.phone+'</a>':'')
+      +(w.email?' · 📧 '+w.email:'')
+      +(w.city?' · 📍 '+w.city:'')
+      +(w.address?'<br>🏠 '+w.address:'')
+      +(w.assigned_to_name?'<br>👉 <b>Assigné à '+w.assigned_to_name+'</b> pour la prise de RDV':'')
+      +(lastNote?'<br><span style="color:#6B7280;font-style:italic">💬 '+(lastNote.text.length>80?lastNote.text.substring(0,80)+'...':lastNote.text)+'</span>':'')
+      +(isFounder()&&w.owner_name?'<br><span style="font-size:11px;color:#9ca3af">🧑‍💼 Géré par '+w.owner_name+'</span>':'')
+      +'</div></div></div>'
+      +'<div class="directory-actions" style="flex-wrap:wrap">'
+      +'<button class="abtn" style="background:var(--bluelt);border-color:var(--bluebdr);color:var(--blue2);font-size:12px" onclick="openWorkflowDetail(\''+w.id+'\')">📋 Ouvrir</button>'
+      +'</div></div>';
+  }).join('');
+}
+
+function openWorkflowForm(prefill){
+  var fld = 'width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit';
+  var lbl = 'font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px';
+  var p = prefill || {};
+
+  var modal = document.createElement('div');
+  modal.id = 'wf-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.innerHTML = '<div style="background:white;border-radius:16px;padding:1.5rem;max-width:480px;width:100%;max-height:92vh;overflow-y:auto">'
+    +'<h3 style="font-size:16px;font-weight:700;margin-bottom:1.25rem">➕ Nouveau prospect</h3>'
+    +'<div style="margin-bottom:1rem"><label style="'+lbl+'">Type *</label>'
+    +'<select id="wf-type" style="'+fld+'">'
+    +'<option value="client">🔧 Client (cherche un mécanicien)</option>'
+    +'<option value="garage">🏪 Garage / Mécanicien (à recruter)</option>'
+    +'</select></div>'
+    +'<div style="margin-bottom:1rem"><label style="'+lbl+'">Nom *</label>'
+    +'<input id="wf-name" type="text" value="'+(p.name||'')+'" placeholder="Nom du client ou du garage" style="'+fld+'"></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:1rem">'
+    +'<div><label style="'+lbl+'">Téléphone</label><input id="wf-phone" type="tel" value="'+(p.phone||'')+'" placeholder="514-555-0100" style="'+fld+'"></div>'
+    +'<div><label style="'+lbl+'">Courriel</label><input id="wf-email" type="email" value="'+(p.email||'')+'" style="'+fld+'"></div>'
+    +'</div>'
+    +'<div style="margin-bottom:1rem"><label style="'+lbl+'">Ville</label><input id="wf-city" type="text" value="'+(p.city||'')+'" placeholder="Laval" style="'+fld+'"></div>'
+    +'<div style="margin-bottom:1rem"><label style="'+lbl+'">Adresse</label><input id="wf-address" type="text" value="'+(p.address||'')+'" style="'+fld+'"></div>'
+    +'<div style="margin-bottom:1.25rem"><label style="'+lbl+'">Première note (optionnel)</label>'
+    +'<textarea id="wf-note" rows="2" placeholder="Ex: Intéressé, veut être rappelé demain..." style="'+fld+';resize:vertical"></textarea></div>'
+    +'<div id="wf-err" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:9px 12px;border-radius:8px;font-size:12.5px;margin-bottom:1rem"></div>'
+    +'<div style="display:flex;gap:8px">'
+    +'<button id="wf-save-btn" onclick="createWorkflow()" style="flex:1;padding:12px;background:#F59E0B;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">✓ Créer le prospect</button>'
+    +'<button onclick="document.getElementById(\'wf-modal\').remove()" style="padding:12px 18px;background:#f3f4f6;border:none;border-radius:8px;font-size:14px;cursor:pointer">Annuler</button>'
+    +'</div></div>';
+  document.body.appendChild(modal);
+}
+
+async function createWorkflow(){
+  var name = (document.getElementById('wf-name').value||'').trim();
+  var errEl = document.getElementById('wf-err');
+  var btn = document.getElementById('wf-save-btn');
+  if(!name){ errEl.textContent='Le nom est obligatoire.'; errEl.style.display='block'; return; }
+
+  btn.disabled = true; btn.textContent = '⏳...';
+  var noteText = (document.getElementById('wf-note').value||'').trim();
+  var notes = [];
+  if(noteText){
+    notes.push({ text: noteText, author: currentAdmin.email, at: new Date().toISOString() });
+  }
+
+  try {
+    await db.collection('workflow').add({
+      prospect_type: document.getElementById('wf-type').value,
+      name: name,
+      phone: (document.getElementById('wf-phone').value||'').trim(),
+      email: (document.getElementById('wf-email').value||'').trim(),
+      city: (document.getElementById('wf-city').value||'').trim(),
+      address: (document.getElementById('wf-address').value||'').trim(),
+      status: 'a_contacter',
+      notes: notes,
+      owner_uid: currentAdmin.uid,
+      owner_email: currentAdmin.email,
+      owner_name: (ROLES[currentRole]?currentRole:''),
+      assigned_to_uid: '',
+      assigned_to_name: '',
+      callback_date: '', callback_time: '',
+      created_at: firebase.firestore.FieldValue.serverTimestamp(),
+      updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    document.getElementById('wf-modal').remove();
+    loadWorkflow();
+  } catch(e){
+    errEl.textContent = 'Erreur : '+e.message; errEl.style.display='block';
+    btn.disabled = false; btn.textContent = '✓ Créer le prospect';
+  }
+}
+
+function openWorkflowDetail(id){
+  var w = _workflow.find(function(x){ return x.id===id; });
+  if(!w) return;
+  var fld = 'width:100%;padding:9px 11px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;font-family:inherit';
+  var lbl = 'font-size:11px;font-weight:600;color:#6B7280;display:block;margin-bottom:3px';
+
+  var statusOpts = Object.keys(WF_STATUS).map(function(k){
+    return '<option value="'+k+'"'+(w.status===k?' selected':'')+'>'+WF_STATUS[k].icon+' '+WF_STATUS[k].label+'</option>';
+  }).join('');
+
+  // Options d'assignation (membres de l'équipe)
+  var assignOpts = '<option value="">— Personne —</option>';
+  _team.forEach(function(m){
+    assignOpts += '<option value="'+m.uid+'|'+(m.name||m.email)+'"'+(w.assigned_to_uid===m.uid?' selected':'')+'>'+(m.name||m.email)+'</option>';
+  });
+
+  var notesHtml = (w.notes && w.notes.length)
+    ? w.notes.map(function(n){
+        var d = n.at ? new Date(n.at).toLocaleDateString('fr-CA',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+        return '<div style="background:#f9fafb;border-radius:8px;padding:9px 11px;margin-bottom:6px"><div style="font-size:13px;color:#1f2937">'+n.text+'</div><div style="font-size:10.5px;color:#9ca3af;margin-top:3px">'+(n.author||'')+' · '+d+'</div></div>';
+      }).join('')
+    : '<div style="font-size:12px;color:#9ca3af;padding:.5rem 0">Aucune note.</div>';
+
+  var modal = document.createElement('div');
+  modal.id = 'wf-detail-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.innerHTML = '<div style="background:white;border-radius:16px;padding:1.5rem;max-width:520px;width:100%;max-height:92vh;overflow-y:auto">'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem">'
+    +'<div><h3 style="font-size:17px;font-weight:700">'+(w.prospect_type==='garage'?'🏪':'🔧')+' '+w.name+'</h3>'
+    +'<div style="font-size:12px;color:#6B7280;margin-top:2px">'+(w.phone?'📞 '+w.phone:'')+(w.city?' · 📍 '+w.city:'')+'</div></div>'
+    +'<button onclick="document.getElementById(\'wf-detail-modal\').remove()" style="background:#f3f4f6;border:none;border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:15px">✕</button>'
+    +'</div>'
+
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:1rem">'
+    +'<div><label style="'+lbl+'">Statut</label><select id="wfd-status" style="'+fld+'" onchange="wfToggleCallback()">'+statusOpts+'</select></div>'
+    +'<div><label style="'+lbl+'">Assigner à (pour RDV)</label><select id="wfd-assign" style="'+fld+'">'+assignOpts+'</select></div>'
+    +'</div>'
+
+    +'<div id="wfd-callback-block" style="display:'+(w.status==='a_rappeler'?'grid':'none')+';grid-template-columns:1fr 1fr;gap:8px;margin-bottom:1rem">'
+    +'<div><label style="'+lbl+'">Date de rappel</label><input id="wfd-cb-date" type="date" value="'+(w.callback_date||'')+'" style="'+fld+'"></div>'
+    +'<div><label style="'+lbl+'">Heure</label><input id="wfd-cb-time" type="time" value="'+(w.callback_time||'')+'" style="'+fld+'"></div>'
+    +'</div>'
+
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:1rem">'
+    +'<div><label style="'+lbl+'">Téléphone</label><input id="wfd-phone" type="tel" value="'+(w.phone||'')+'" style="'+fld+'"></div>'
+    +'<div><label style="'+lbl+'">Courriel</label><input id="wfd-email" type="email" value="'+(w.email||'')+'" style="'+fld+'"></div>'
+    +'</div>'
+    +'<div style="margin-bottom:1rem"><label style="'+lbl+'">Adresse</label><input id="wfd-address" type="text" value="'+(w.address||'')+'" style="'+fld+'"></div>'
+
+    +'<div style="border-top:1px solid #f3f4f6;padding-top:1rem;margin-bottom:1rem">'
+    +'<label style="'+lbl+';margin-bottom:8px">💬 Historique des notes</label>'
+    +notesHtml
+    +'<div style="display:flex;gap:6px;margin-top:8px">'
+    +'<input id="wfd-new-note" type="text" placeholder="Ajouter une note..." style="flex:1;'+fld+'" onkeydown="if(event.key===\'Enter\')wfAddNote(\''+id+'\')">'
+    +'<button onclick="wfAddNote(\''+id+'\')" style="padding:9px 14px;background:#F59E0B;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">+ Note</button>'
+    +'</div></div>'
+
+    +'<div style="display:flex;gap:8px">'
+    +'<button onclick="saveWorkflowDetail(\''+id+'\')" style="flex:1;padding:12px;background:#F59E0B;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">💾 Enregistrer</button>'
+    +(isFounder()||w.owner_uid===currentAdmin.uid ? '<button onclick="deleteWorkflow(\''+id+'\')" style="padding:12px 16px;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:8px;font-size:14px;cursor:pointer">🗑</button>' : '')
+    +'</div></div>';
+  document.body.appendChild(modal);
+}
+
+function wfToggleCallback(){
+  var status = document.getElementById('wfd-status').value;
+  document.getElementById('wfd-callback-block').style.display = status==='a_rappeler' ? 'grid' : 'none';
+}
+
+async function wfAddNote(id){
+  var input = document.getElementById('wfd-new-note');
+  var text = (input.value||'').trim();
+  if(!text) return;
+  var w = _workflow.find(function(x){ return x.id===id; });
+  if(!w) return;
+  var notes = w.notes || [];
+  notes.push({ text: text, author: currentAdmin.email, at: new Date().toISOString() });
+  try {
+    await db.collection('workflow').doc(id).update({ notes: notes, updated_at: firebase.firestore.FieldValue.serverTimestamp() });
+    w.notes = notes;
+    document.getElementById('wf-detail-modal').remove();
+    openWorkflowDetail(id); // rouvre avec la note ajoutée
+  } catch(e){ alert('Erreur : '+e.message); }
+}
+
+async function saveWorkflowDetail(id){
+  var assignVal = document.getElementById('wfd-assign').value;
+  var assignUid = '', assignName = '';
+  if(assignVal){ var parts = assignVal.split('|'); assignUid = parts[0]; assignName = parts[1]||''; }
+
+  var updates = {
+    status: document.getElementById('wfd-status').value,
+    phone: (document.getElementById('wfd-phone').value||'').trim(),
+    email: (document.getElementById('wfd-email').value||'').trim(),
+    address: (document.getElementById('wfd-address').value||'').trim(),
+    assigned_to_uid: assignUid,
+    assigned_to_name: assignName,
+    callback_date: document.getElementById('wfd-cb-date') ? document.getElementById('wfd-cb-date').value : '',
+    callback_time: document.getElementById('wfd-cb-time') ? document.getElementById('wfd-cb-time').value : '',
+    updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+  };
+  try {
+    await db.collection('workflow').doc(id).update(updates);
+    document.getElementById('wf-detail-modal').remove();
+    loadWorkflow();
+  } catch(e){ alert('Erreur : '+e.message); }
+}
+
+function deleteWorkflow(id){
+  if(!confirm('Supprimer ce prospect définitivement ?')) return;
+  db.collection('workflow').doc(id).delete()
+    .then(function(){ document.getElementById('wf-detail-modal').remove(); loadWorkflow(); })
+    .catch(function(e){ alert('Erreur : '+e.message); });
+}
+
+/* ══════════ EXPORT CSV ══════════ */
+function exportCSV(){
+  var activeTab = document.querySelector(".tab.act").id.replace("tab-","");
+  if(activeTab === "clients"){
+    if(!_leads.length) return alert("Aucun client à exporter.");
+    var headers = ["ID","Date","Nom","Téléphone","Courriel","Adresse","Véhicule","Problème","Urgence","Contact","Code","Statut","Description"];
+    var rows = _leads.map(function(l){
+      var dt = l.created_at&&l.created_at.toDate ? l.created_at.toDate().toLocaleString("fr-CA") : "";
+      var v = [l.vehicle_make,l.vehicle_model,l.vehicle_year].filter(Boolean).join(" ");
+      return [l.id,dt,l.client_name||"",l.client_phone||"",l.client_email||"",l.address||"",v,l.problem||"",l.urgency||"",l.contact_pref||"",l.booking_code||"",l.status||"nouveau",(l.description||"").replace(/"/g,'""')].map(function(x){return '"'+x+'"';}).join(",");
+    });
+    dl([headers.join(",")].concat(rows).join("\n"), "greaz-clients-"+today()+".csv");
+  } else if(activeTab === "mec"){
+    if(!_mecs.length) return alert("Aucun mécanicien à exporter.");
+    var headers2 = ["ID","Date","Prénom","Nom","Téléphone","Courriel","Ville","Expérience","Licence","Véhicules","Services","Rayon","Disponibilités","Statut","Source","Bio"];
+    var rows2 = _mecs.map(function(m){
+      var dt = m.created_at&&m.created_at.toDate ? m.created_at.toDate().toLocaleString("fr-CA") : "";
+      return [m.id,dt,m.first_name||"",m.last_name||"",m.phone||"",m.email||"",m.city||"",m.experience||"",m.license||"",m.vehicle_types||"",m.services||"",m.radius||"",m.availability||m.schedule||"",m.status||"nouveau",m.source||"landing",(m.bio||"").replace(/"/g,'""')].map(function(x){return '"'+x+'"';}).join(",");
+    });
+    dl([headers2.join(",")].concat(rows2).join("\n"), "greaz-mecaniciens-"+today()+".csv");
+  } else if(activeTab === "rdv"){
+    if(!_rdvs.length) return alert("Aucune réservation à exporter.");
+    var headers3 = ["ID","Date demande","Professionnel","Type","Client","Téléphone","Courriel","Date RDV","Plage","Problème","Code","Statut"];
+    var rows3 = _rdvs.map(function(a){
+      var dt = a.created_at&&a.created_at.toDate ? a.created_at.toDate().toLocaleString("fr-CA") : "";
+      return [a.id,dt,a.mechanic_name||"",a.mechanic_type||"",(a.client_prenom||"")+" "+(a.client_nom||""),a.client_phone||"",a.client_email||"",a.date||"",a.time_slot||"",a.problem||"",a.booking_code||"",a.status||"en_attente"].map(function(x){return '"'+x+'"';}).join(",");
+    });
+    dl([headers3.join(",")].concat(rows3).join("\n"), "greaz-reservations-"+today()+".csv");
+  } else {
+    alert("Pas d'export disponible pour cette section.");
+  }
+}
+function dl(content, filename){
+  var blob = new Blob(['\uFEFF'+content], {type:'text/csv;charset=utf-8;'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+function today(){ return new Date().toISOString().slice(0,10); }
+</script>
+</body>
+</html>
