@@ -378,6 +378,16 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
       <div id="pending-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
 
       <div class="section-title">📇 Annuaire public actuel</div>
+      <div style="margin-bottom:1rem;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input class="search-input" type="text" id="dir-search" placeholder="🔍 Chercher par nom, ville, adresse..." oninput="renderDirectoryList()" style="flex:1;min-width:220px">
+        <select id="dir-filter" onchange="renderDirectoryList()" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit;background:white">
+          <option value="">Tous</option>
+          <option value="pro">✅ Avec compte Pro</option>
+          <option value="nopro">⚠️ Sans compte Pro</option>
+          <option value="hidden">🙈 Masqués</option>
+        </select>
+        <span id="dir-count" style="font-size:12px;color:var(--muted);white-space:nowrap"></span>
+      </div>
       <div id="directory-list"></div>
     </div>
 
@@ -1197,8 +1207,38 @@ function renderDirectoryList(){
     el.innerHTML = '<div style="font-size:12.5px;color:var(--muted);padding:.5rem 0">Aucun professionnel publié pour l\'instant.</div>';
     return;
   }
+
+  // Recherche + filtre
+  var searchEl = document.getElementById('dir-search');
+  var filterEl = document.getElementById('dir-filter');
+  var search = searchEl ? searchEl.value.toLowerCase().trim() : '';
+  var filter = filterEl ? filterEl.value : '';
+
+  var list = _directory.filter(function(d){
+    if(filter === 'pro' && !d.owner_uid) return false;
+    if(filter === 'nopro' && d.owner_uid) return false;
+    if(filter === 'hidden' && d.active !== false) return false;
+    if(search){
+      var hay = ((d.name||'')+(d.city||'')+(d.address||'')+(d.services||'')).toLowerCase();
+      if(hay.indexOf(search) === -1) return false;
+    }
+    return true;
+  });
+
+  var countEl = document.getElementById('dir-count');
+  if(countEl){
+    countEl.textContent = (search||filter)
+      ? list.length + ' / ' + _directory.length
+      : _directory.length + ' garages';
+  }
+
+  if(!list.length){
+    el.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:1.5rem 0;text-align:center">Aucun résultat pour cette recherche.</div>';
+    return;
+  }
+
   var CL = {0:'',1:'✦ Certifié',2:'✦✦ Élite',3:'✦✦✦ Premium'};
-  el.innerHTML = _directory.map(function(d){
+  el.innerHTML = list.map(function(d){
     var isGarage = d.type==='garage', isActive = d.active!==false;
     var cert = CL[d.certification||0], hasGPS = d.lat && d.lng;
     var suspect = hasGPS && gpsSuspect(d.lat, d.lng, d.city);
