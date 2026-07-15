@@ -246,7 +246,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
 <div class="app" id="app">
 
   <div class="header">
-    <div class="header-logo">Gre<span>az</span> <span style="font-size:12px;font-weight:400;color:rgba(255,255,255,.35);margin-left:6px">Gestion</span> <span style="font-size:10px;font-weight:700;color:#00C26F;background:rgba(0,194,111,.15);padding:2px 8px;border-radius:6px;margin-left:6px">v3.2 🗂</span></div>
+    <div class="header-logo">Gre<span>az</span> <span style="font-size:12px;font-weight:400;color:rgba(255,255,255,.35);margin-left:6px">Gestion</span> <span style="font-size:10px;font-weight:700;color:#00C26F;background:rgba(0,194,111,.15);padding:2px 8px;border-radius:6px;margin-left:6px">v4.0 🔧</span></div>
     <div class="header-right">
       <span class="htime" id="htime"></span>
       <button id="notif-bell" onclick="toggleNotifSound()" title="Activer/désactiver le son" style="position:relative;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;width:38px;height:38px;cursor:pointer;font-size:16px;color:white">🔔<span id="notif-badge" style="display:none;position:absolute;top:-6px;right:-6px;background:#dc2626;color:white;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:none;align-items:center;justify-content:center;padding:0 4px">0</span></button>
@@ -845,6 +845,7 @@ function leadCard(l){
     +"<a href='tel:"+l.client_phone+"' class='abtn abtn-call'>📞 Appeler</a>"
     +"<a href='sms:"+l.client_phone+"' class='abtn abtn-sms'>💬 SMS</a>"
     +"<a href='mailto:"+l.client_email+"' class='abtn abtn-email'>📧 Email</a>"
+    +"<button class='abtn' style='background:#FFF7ED;border-color:#FDBA74;color:#C2410C;font-weight:700' onclick='openAssignModal(\""+l.id+"\",\"leads\")'>🔧 Assigner à un mécano</button>"
     +"<button class='abtn abtn-del' onclick='deleteLead(\""+l.id+"\")'>🗑 Supprimer</button>"
     +"</div></div></div>";
 }
@@ -1214,6 +1215,9 @@ function renderDirectoryList(){
       +"</div></div></div>"
       +"<div class='directory-actions' style='flex-wrap:wrap'>"
       +"<button class='abtn' style='background:var(--bluelt);border-color:var(--bluebdr);color:var(--blue2);font-size:11px' onclick='editDirectoryEntry(\""+d.id+"\")'>✏️ Modifier</button>"
+      +(d.owner_uid
+        ? "<span class='abtn' style='background:#ECFDF5;border-color:#6EE7B7;color:#059669;font-size:11px;font-weight:700;cursor:default'>✅ Compte Pro actif</span>"
+        : "<button class='abtn' style='background:#FFF7ED;border-color:#FDBA74;color:#C2410C;font-size:11px;font-weight:700' onclick='createProAccount(\""+d.id+"\")'>🔑 Créer compte Pro</button>")
       +"<button class='abtn' style='background:var(--surface);border-color:var(--border);color:var(--muted);font-size:11px' onclick='toggleActive(\""+d.id+"\","+(isActive?'false':'true')+")'>"+(isActive?'🙈 Masquer':'👁 Réactiver')+"</button>"
       +"<button class='abtn abtn-del' style='font-size:11px' onclick='deleteFromDirectory(\""+d.id+"\")'>🗑 Retirer</button>"
       +"</div></div>";
@@ -2531,6 +2535,195 @@ function viewMemberWork(email, name){
     sel.value = email;
   }
   renderWorkflow();
+}
+
+/* ══════════ ASSIGNER À UN MÉCANICIEN ══════════ */
+function openAssignModal(docId, coll){
+  var src = (coll==='leads' ? _leads : _rdvs).find(function(x){ return x.id===docId; });
+  if(!src){ alert('Demande introuvable.'); return; }
+
+  // Garages actifs avec un compte (owner_uid) — ils peuvent recevoir des demandes
+  var eligibles = _directory.filter(function(g){ return g.active !== false; });
+  if(!eligibles.length){ alert('Aucun mécanicien dans l\'annuaire.'); return; }
+
+  // Trier : ceux qui ont un compte Pro en premier, puis par ville du client
+  var clientCity = (src.address||src.client_address||'').toLowerCase();
+  eligibles.sort(function(a,b){
+    var aPro = a.owner_uid?0:1, bPro = b.owner_uid?0:1;
+    if(aPro!==bPro) return aPro-bPro;
+    var aMatch = clientCity.indexOf((a.city||'').toLowerCase())!==-1 ? 0 : 1;
+    var bMatch = clientCity.indexOf((b.city||'').toLowerCase())!==-1 ? 0 : 1;
+    return aMatch-bMatch;
+  });
+
+  var opts = eligibles.map(function(g){
+    var pro = g.owner_uid ? '✅ ' : '⚠️ ';
+    var label = pro + g.name + (g.city?' — '+g.city:'') + (g.owner_uid?'':' (pas de compte Pro)');
+    return '<option value="'+g.id+'">'+label+'</option>';
+  }).join('');
+
+  var fld = 'width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit';
+  var lbl = 'font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px';
+  var today = new Date().toISOString().slice(0,10);
+
+  var modal = document.createElement('div');
+  modal.id = 'assign-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.innerHTML = '<div style="background:white;border-radius:16px;padding:1.5rem;max-width:480px;width:100%;max-height:92vh;overflow-y:auto">'
+    +'<h3 style="font-size:16px;font-weight:700;margin-bottom:.3rem">🔧 Assigner à un mécanicien</h3>'
+    +'<p style="font-size:12.5px;color:#6B7280;margin-bottom:1.25rem">Client : <b>'+(src.client_name||((src.client_prenom||'')+' '+(src.client_nom||'')))+'</b></p>'
+
+    +'<div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:9px;padding:10px 12px;font-size:12px;color:#9A3412;margin-bottom:1rem;line-height:1.6">'
+    +'✅ = a un compte Pro, recevra la demande dans son espace<br>'
+    +'⚠️ = pas encore de compte Pro, il faudra l\'appeler'
+    +'</div>'
+
+    +'<div style="margin-bottom:1rem"><label style="'+lbl+'">Mécanicien / Garage *</label>'
+    +'<select id="as-mec" style="'+fld+'">'+opts+'</select></div>'
+
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:1rem">'
+    +'<div><label style="'+lbl+'">Date du RDV</label><input id="as-date" type="date" min="'+today+'" value="'+(src.date||'')+'" style="'+fld+'"></div>'
+    +'<div><label style="'+lbl+'">Plage</label><select id="as-slot" style="'+fld+'">'
+    +'<option value="">— Choisir —</option>'
+    +'<option value="matin"'+(src.time_slot==='matin'?' selected':'')+'>Matin</option>'
+    +'<option value="aprem"'+(src.time_slot==='aprem'?' selected':'')+'>Après-midi</option>'
+    +'<option value="soir"'+(src.time_slot==='soir'?' selected':'')+'>Soir</option>'
+    +'</select></div></div>'
+
+    +'<div style="margin-bottom:1.25rem"><label style="'+lbl+'">Message au mécanicien (optionnel)</label>'
+    +'<textarea id="as-note" rows="2" placeholder="Ex: Client pressé, disponible en après-midi" style="'+fld+';resize:vertical"></textarea></div>'
+
+    +'<div id="as-err" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:9px 12px;border-radius:8px;font-size:12.5px;margin-bottom:1rem"></div>'
+
+    +'<div style="display:flex;gap:8px">'
+    +'<button id="as-btn" onclick="doAssign(\''+docId+'\',\''+coll+'\')" style="flex:1;padding:12px;background:#EA580C;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">📨 Envoyer au mécanicien</button>'
+    +'<button onclick="document.getElementById(\'assign-modal\').remove()" style="padding:12px 18px;background:#f3f4f6;border:none;border-radius:8px;font-size:14px;cursor:pointer">Annuler</button>'
+    +'</div></div>';
+  document.body.appendChild(modal);
+}
+
+async function doAssign(docId, coll){
+  var src = (coll==='leads' ? _leads : _rdvs).find(function(x){ return x.id===docId; });
+  var mecId = document.getElementById('as-mec').value;
+  var mec = _directory.find(function(g){ return g.id===mecId; });
+  var errEl = document.getElementById('as-err');
+  var btn = document.getElementById('as-btn');
+
+  if(!mec){ errEl.textContent='Choisis un mécanicien.'; errEl.style.display='block'; return; }
+
+  btn.disabled = true; btn.textContent = '⏳ Envoi...';
+
+  var note = (document.getElementById('as-note').value||'').trim();
+  var code = src.booking_code || ('GZ-'+Math.floor(Math.random()*90000+10000));
+
+  try {
+    await db.collection('jobs').add({
+      mechanic_id: mecId,
+      mechanic_name: mec.name || '',
+      mechanic_owner_uid: mec.owner_uid || '',
+
+      client_name: src.client_name || ((src.client_prenom||'')+' '+(src.client_nom||'')).trim(),
+      client_phone: src.client_phone || '',
+      client_email: src.client_email || '',
+      client_address: src.address || src.client_address || '',
+
+      vehicle_type: src.vehicle_type || '',
+      vehicle_make: src.vehicle_make || '',
+      vehicle_model: src.vehicle_model || '',
+      vehicle_year: src.vehicle_year || '',
+
+      problem: src.problem || '',
+      description: src.description || '',
+      admin_note: note,
+
+      date: document.getElementById('as-date').value || '',
+      time_slot: document.getElementById('as-slot').value || '',
+
+      booking_code: code,
+      status: 'envoye',
+      timeline: [{ status:'envoye', at:new Date().toISOString(), by:currentAdmin.email, note:note }],
+
+      source: coll,
+      source_id: docId,
+      assigned_by: currentAdmin.email,
+      created_at: firebase.firestore.FieldValue.serverTimestamp(),
+      updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Marque la demande d'origine comme assignée
+    await db.collection(coll).doc(docId).update({
+      status: 'assigne',
+      assigned_mechanic_id: mecId,
+      assigned_mechanic_name: mec.name || '',
+    });
+
+    document.getElementById('assign-modal').remove();
+
+    if(mec.owner_uid){
+      alert('✅ Demande envoyée à '+mec.name+' !\n\nIl la verra immédiatement dans son espace Pro.');
+    } else {
+      alert('⚠️ '+mec.name+' n\'a pas encore de compte Pro.\n\nLa demande est enregistrée, mais il faut l\'appeler au '+(mec.phone||'—')+' pour le prévenir.\n\nCrée-lui un compte Pro depuis l\'onglet Annuaire pour automatiser ça.');
+    }
+
+    loadLeads(); loadAppointments();
+  } catch(e){
+    errEl.textContent = 'Erreur : '+e.message; errEl.style.display='block';
+    btn.disabled = false; btn.textContent = '📨 Envoyer au mécanicien';
+  }
+}
+
+/* ══════════ CRÉER UN COMPTE PRO POUR UN MÉCANICIEN ══════════ */
+async function createProAccount(garageId){
+  var g = _directory.find(function(x){ return x.id===garageId; });
+  if(!g) return;
+  if(g.owner_uid){ alert(g.name+' a déjà un compte Pro.'); return; }
+
+  var email = prompt(
+    'Créer un compte Pro pour :\n'+g.name+'\n\n'
+    +'Courriel du mécanicien :\n(c\'est avec ça qu\'il se connectera)',
+    g.email || ''
+  );
+  if(!email || email.indexOf('@')===-1){ if(email!==null) alert('Courriel invalide.'); return; }
+
+  var pass = prompt('Mot de passe temporaire (min. 6 caractères) :\n\nTu vas le lui communiquer, il pourra le changer.', 'greaz'+Math.floor(Math.random()*9000+1000));
+  if(!pass) return;
+  if(pass.length < 6){ alert('Mot de passe trop court (min. 6 caractères).'); return; }
+
+  try {
+    // Instance secondaire : crée le compte sans nous déconnecter
+    var cfg = firebase.app().options;
+    var secondary;
+    try { secondary = firebase.app('secondary'); }
+    catch(e){ secondary = firebase.initializeApp(cfg, 'secondary'); }
+
+    var cred = await secondary.auth().createUserWithEmailAndPassword(email, pass);
+    var uid = cred.user.uid;
+    await secondary.auth().signOut();
+
+    // Lie le compte au garage
+    await db.collection('mechanics_public').doc(garageId).update({
+      owner_uid: uid,
+      email: email,
+      claimed: true,
+      pro_created_at: firebase.firestore.FieldValue.serverTimestamp(),
+      pro_created_by: currentAdmin.email,
+    });
+
+    alert('✅ Compte Pro créé !\n\n'
+      +'Garage : '+g.name+'\n'
+      +'Courriel : '+email+'\n'
+      +'Mot de passe : '+pass+'\n\n'
+      +'📎 Envoie-lui ce lien :\n'
+      +'https://greaz-dash.github.io/panel/greaz-mecano.html\n\n'
+      +'Il pourra gérer ses horaires, ses prix, et recevoir les demandes clients.');
+
+    loadAnnuaireData();
+  } catch(e){
+    var msg = e.message;
+    if(e.code === 'auth/email-already-in-use') msg = 'Ce courriel a déjà un compte Firebase.\n\nSi c\'est bien son compte, il faut lier son UID manuellement dans Firestore (champ owner_uid).';
+    if(e.code === 'auth/weak-password') msg = 'Mot de passe trop faible (min. 6 caractères).';
+    alert('Erreur : '+msg);
+  }
 }
 
 /* ══════════ EXPORT CSV ══════════ */
