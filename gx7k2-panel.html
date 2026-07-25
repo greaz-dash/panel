@@ -246,7 +246,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
 <div class="app" id="app">
 
   <div class="header">
-    <div class="header-logo">Gre<span>az</span> <span style="font-size:12px;font-weight:400;color:rgba(255,255,255,.35);margin-left:6px">Gestion</span> <span style="font-size:10px;font-weight:700;color:#00C26F;background:rgba(0,194,111,.15);padding:2px 8px;border-radius:6px;margin-left:6px">v4.0 🔧</span></div>
+    <div class="header-logo">Gre<span>az</span> <span style="font-size:12px;font-weight:400;color:rgba(255,255,255,.35);margin-left:6px">Gestion</span> <span style="font-size:10px;font-weight:700;color:#00C26F;background:rgba(0,194,111,.15);padding:2px 8px;border-radius:6px;margin-left:6px">v4.2 🔧</span></div>
     <div class="header-right">
       <span class="htime" id="htime"></span>
       <button id="notif-bell" onclick="toggleNotifSound()" title="Activer/désactiver le son" style="position:relative;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;width:38px;height:38px;cursor:pointer;font-size:16px;color:white">🔔<span id="notif-badge" style="display:none;position:absolute;top:-6px;right:-6px;background:#dc2626;color:white;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:none;align-items:center;justify-content:center;padding:0 4px">0</span></button>
@@ -275,6 +275,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
     <div class="tab" id="tab-rdv" onclick="switchTab('rdv')">📅 Réservations <span class="tbadge orange" id="tb3">0</span></div>
     <div class="tab" id="tab-annuaire" onclick="switchTab('annuaire')">📇 Annuaire <span class="tbadge purple" id="tb4">0</span></div>
     <div class="tab" id="tab-claims" onclick="switchTab('claims')">✋ Revendications <span class="tbadge" id="tb5" style="background:#00C26F">0</span></div>
+    <div class="tab" id="tab-jobs" onclick="switchTab('jobs')">🔧 Assignations <span class="tbadge" id="tbjobs" style="background:#F59E0B">0</span></div>
     <div class="tab" id="tab-workflow" onclick="switchTab('workflow')">🗂 Workflow <span class="tbadge" id="tb8" style="background:#F59E0B">0</span></div>
     <div class="tab" id="tab-affiliates" onclick="switchTab('affiliates')">🎯 Affiliés <span class="tbadge" id="tb6" style="background:#8B5CF6">0</span></div>
     <div class="tab" id="tab-team" onclick="switchTab('team')" style="display:none">👥 Équipe <span class="tbadge" id="tb7" style="background:#0EA5E9">0</span></div>
@@ -310,12 +311,13 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
         <button class="tool-btn" onclick="loadMecApps()">🔄 Rafraîchir</button>
       </div>
       <div class="toolbar" style="margin-top:0">
-        <button class="filter-btn act" onclick="filterMecs('all',this)">Tous</button>
+        <button class="filter-btn act" onclick="filterMecs('todo',this)">⚡ À traiter</button>
         <button class="filter-btn" onclick="filterMecs('nouveau',this)">🆕 Nouveaux</button>
         <button class="filter-btn" onclick="filterMecs('contacte',this)">📞 Contactés</button>
         <button class="filter-btn" onclick="filterMecs('en-verification',this)">🔍 En vérification</button>
         <button class="filter-btn" onclick="filterMecs('integre',this)">✅ Intégrés</button>
         <button class="filter-btn" onclick="filterMecs('refuse',this)">❌ Refusés</button>
+        <button class="filter-btn" onclick="filterMecs('all',this)">Tous</button>
       </div>
       <div id="mec-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
     </div>
@@ -397,6 +399,20 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
       </div>
       <div class="section-title">✋ Demandes de revendication en attente</div>
       <div id="claims-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
+    </div>
+
+    <div class="panel" id="panel-jobs">
+      <div class="toolbar">
+        <input class="search-input" type="text" id="jb-search" placeholder="🔍 Client, garage, téléphone..." oninput="renderJobsAdmin()">
+        <button class="tool-btn" onclick="loadJobsAdmin()">🔄 Rafraîchir</button>
+      </div>
+      <div class="toolbar" style="margin-top:0">
+        <button class="filter-btn act" id="jbchip-todo" onclick="jbFilter('todo',this)">⚡ Demande mon action</button>
+        <button class="filter-btn" onclick="jbFilter('envoye',this)">📨 En attente du mécano</button>
+        <button class="filter-btn" onclick="jbFilter('accepte',this)">✅ Acceptés</button>
+        <button class="filter-btn" onclick="jbFilter('',this)">Tous</button>
+      </div>
+      <div id="jobs-admin-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
     </div>
 
     <div class="panel" id="panel-workflow">
@@ -497,7 +513,7 @@ firebase.initializeApp({
 var db = firebase.firestore();
 
 var _leads=[], _mecs=[], _rdvs=[], _pendingMecs=[], _directory=[], _claims=[], _affiliates=[];
-var _leadsFilter="all", _mecsFilter="all", _rdvFilter="all";
+var _leadsFilter="all", _mecsFilter="todo", _rdvFilter="all";
 var _leadsSearch="", _mecsSearch="", _rdvSearch="";
 
 /* ══════════ AUTHENTIFICATION FIREBASE ══════════ */
@@ -602,7 +618,7 @@ function init(){
   applyRolePermissions();
 
   updateTime(); setInterval(updateTime,30000);
-  loadLeads(); loadMecApps(); loadAppointments(); loadClaims(); loadWorkflow(); loadTeam(); loadAnnuaireData();
+  loadLeads(); loadMecApps(); loadAppointments(); loadClaims(); loadWorkflow(); loadTeam(); loadAnnuaireData(); loadJobsAdmin();
   if(canManageDirectory()){ loadAffiliates(); }
   setTimeout(startRealtimeNotifications, 3000); // démarre après le chargement initial
 }
@@ -764,6 +780,7 @@ function switchTab(t){
   document.getElementById("tab-"+t).classList.add("act");
   document.getElementById("panel-"+t).classList.add("act");
   if(t==='clients' || t==='rdv' || t==='claims') clearNotifCount();
+  if(t==='jobs') loadJobsAdmin();
 }
 
 /* ══════════ LEADS (CLIENTS) ══════════ */
@@ -884,7 +901,10 @@ function filterMecs(f, btn){
 function searchMecs(q){ _mecsSearch = q.toLowerCase(); renderMecs(); }
 function renderMecs(){
   var list = _mecs.filter(function(m){
-    if(_mecsFilter !== "all" && (m.status||"nouveau") !== _mecsFilter) return false;
+    var st = m.status || "nouveau";
+    // « À traiter » : tout sauf ce qui est déjà réglé (intégré ou refusé)
+    if(_mecsFilter === "todo"){ if(st === "integre" || st === "refuse") return false; }
+    else if(_mecsFilter !== "all" && st !== _mecsFilter) return false;
     if(_mecsSearch){
       var h = ((m.first_name||"")+(m.last_name||"")+(m.phone||"")+(m.city||"")+(m.vehicle_types||"")+(m.services||"")).toLowerCase();
       if(!h.includes(_mecsSearch)) return false;
@@ -893,7 +913,12 @@ function renderMecs(){
   });
   document.getElementById("tb2").textContent = _mecs.filter(function(m){ return !m.status||m.status==="nouveau"; }).length;
   if(!list.length){
-    document.getElementById("mec-list").innerHTML = '<div class="empty"><div class="empty-icon">👨‍🔧</div><p>Aucune candidature</p></div>';
+    var done = _mecs.filter(function(m){ var s=m.status||"nouveau"; return s==="integre"||s==="refuse"; }).length;
+    document.getElementById("mec-list").innerHTML = '<div class="empty"><div class="empty-icon">👨‍🔧</div><p>'
+      + (_mecsFilter==="todo"
+          ? '✨ Rien à traiter.' + (done ? '<br><span style="font-size:12.5px;color:var(--muted)">'+done+' candidature'+(done>1?'s':'')+' déjà réglée'+(done>1?'s':'')+' — voir « Tous »</span>' : '')
+          : 'Aucune candidature')
+      + '</p></div>';
     return;
   }
   document.getElementById("mec-list").innerHTML = '<div class="cards">'+list.map(mecCard).join("")+'</div>';
@@ -1257,6 +1282,7 @@ function renderDirectoryList(){
       +"<button class='abtn' style='background:var(--bluelt);border-color:var(--bluebdr);color:var(--blue2);font-size:11px' onclick='editDirectoryEntry(\""+d.id+"\")'>✏️ Modifier</button>"
       +(d.owner_uid
         ? "<span class='abtn' style='background:#ECFDF5;border-color:#6EE7B7;color:#059669;font-size:11px;font-weight:700;cursor:default'>✅ Compte Pro actif</span>"
+          +"<button class='abtn' style='background:#EEF2FF;border-color:#A5B4FC;color:#4338CA;font-size:11px;font-weight:700' onclick='createStaffAccount(\""+d.id+"\")'>👷 + Employé</button>"
         : "<button class='abtn' style='background:#FFF7ED;border-color:#FDBA74;color:#C2410C;font-size:11px;font-weight:700' onclick='createProAccount(\""+d.id+"\")'>🔑 Créer compte Pro</button>")
       +"<button class='abtn' style='background:var(--surface);border-color:var(--border);color:var(--muted);font-size:11px' onclick='toggleActive(\""+d.id+"\","+(isActive?'false':'true')+")'>"+(isActive?'🙈 Masquer':'👁 Réactiver')+"</button>"
       +"<button class='abtn abtn-del' style='font-size:11px' onclick='deleteFromDirectory(\""+d.id+"\")'>🗑 Retirer</button>"
@@ -2709,6 +2735,208 @@ async function doAssign(docId, coll){
   } catch(e){
     errEl.textContent = 'Erreur : '+e.message; errEl.style.display='block';
     btn.disabled = false; btn.textContent = '📨 Envoyer au mécanicien';
+  }
+}
+
+/* ══════════════════════════════════════════
+   ASSIGNATIONS — suivi des demandes envoyées aux mécanos
+   ══════════════════════════════════════════ */
+var _jobsAdmin = [];
+var _jbFilter = 'todo';
+
+var JB_ST = {
+  envoye:         { icon:'📨', label:'En attente du mécano', c:'#F59E0B', bg:'#FEF3C7' },
+  accepte:        { icon:'✅', label:'Accepté',              c:'#059669', bg:'#ECFDF5' },
+  a_reprogrammer: { icon:'🔄', label:'Autre date proposée',  c:'#D97706', bg:'#FEF3C7' },
+  refuse:         { icon:'❌', label:'Refusé',               c:'#DC2626', bg:'#FEF2F2' },
+};
+var JB_SLOT = { matin:'Matin', aprem:'Après-midi', soir:'Soir' };
+
+function jbFilter(f, btn){
+  _jbFilter = f;
+  btn.parentElement.querySelectorAll('.filter-btn').forEach(function(b){ b.classList.remove('act'); });
+  btn.classList.add('act');
+  renderJobsAdmin();
+}
+
+function loadJobsAdmin(){
+  var el = document.getElementById('jobs-admin-list');
+  if(el) el.innerHTML = '<div class="loading"><span class="spinner"></span>Chargement...</div>';
+  db.collection('jobs').get().then(function(snap){
+    _jobsAdmin = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    renderJobsAdmin();
+    updateJobsBadge();
+  }).catch(function(e){
+    if(el) el.innerHTML = '<div class="empty">Erreur : '+e.message+'</div>';
+  });
+}
+
+function updateJobsBadge(){
+  var n = _jobsAdmin.filter(function(j){ return j.status==='a_reprogrammer' || j.status==='refuse'; }).length;
+  var b = document.getElementById('tbjobs');
+  if(b){ b.textContent = n; b.style.display = n ? '' : 'none'; }
+}
+
+function renderJobsAdmin(){
+  var el = document.getElementById('jobs-admin-list');
+  if(!el) return;
+  var search = (document.getElementById('jb-search').value||'').toLowerCase().trim();
+
+  var list = _jobsAdmin.filter(function(j){
+    if(_jbFilter === 'todo'){ if(j.status!=='a_reprogrammer' && j.status!=='refuse') return false; }
+    else if(_jbFilter && j.status !== _jbFilter) return false;
+    if(search){
+      var hay = ((j.client_name||'')+(j.client_phone||'')+(j.mechanic_name||'')+(j.problem||'')).toLowerCase();
+      if(hay.indexOf(search) === -1) return false;
+    }
+    return true;
+  });
+
+  // Ce qui demande une action d'abord
+  var prio = { a_reprogrammer:0, refuse:1, envoye:2, accepte:3 };
+  list.sort(function(a,b){
+    var pa = prio[a.status]!==undefined?prio[a.status]:9, pb = prio[b.status]!==undefined?prio[b.status]:9;
+    if(pa!==pb) return pa-pb;
+    var da = a.updated_at&&a.updated_at.toDate?a.updated_at.toDate():new Date(0);
+    var db2 = b.updated_at&&b.updated_at.toDate?b.updated_at.toDate():new Date(0);
+    return db2-da;
+  });
+
+  if(!list.length){
+    el.innerHTML = '<div class="empty">'
+      + (_jbFilter==='todo' ? '✨ Rien à traiter — tous les mécanos ont répondu.' : 'Aucune assignation pour ce filtre.')
+      + '</div>';
+    return;
+  }
+
+  el.innerHTML = list.map(function(j){
+    var s = JB_ST[j.status] || JB_ST.envoye;
+    var veh = [j.vehicle_year, j.vehicle_make, j.vehicle_model].filter(Boolean).join(' ');
+    var needsAction = (j.status==='a_reprogrammer' || j.status==='refuse');
+
+    var box = '';
+    if(j.status === 'a_reprogrammer'){
+      box = '<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:9px;padding:11px 13px;margin:10px 0;font-size:13px;color:#92400E">'
+        +'🔄 <b>'+(j.mechanic_name||'Le mécano')+' propose le '+fmtD(j.proposed_date)
+        +(j.proposed_slot?' ('+(JB_SLOT[j.proposed_slot]||j.proposed_slot)+')':'')+'</b>'
+        +'<br><span style="opacity:.75">Le client avait demandé le '+fmtD(j.date)+(j.time_slot?' ('+(JB_SLOT[j.time_slot]||j.time_slot)+')':'')+'</span>'
+        +(j.reschedule_note?'<br>💬 « '+j.reschedule_note+' »':'')
+        +'</div>';
+    }
+    if(j.status === 'refuse'){
+      box = '<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:9px;padding:11px 13px;margin:10px 0;font-size:13px;color:#991B1B">'
+        +'❌ <b>'+(j.mechanic_name||'Le mécano')+' ne peut pas prendre ce client.</b>'
+        +(j.refuse_reason?'<br>💬 « '+j.refuse_reason+' »':'')
+        +'<br><span style="opacity:.8">→ Réassigne-le à un autre garage.</span>'
+        +'</div>';
+    }
+
+    return '<div class="lead-card"'+(needsAction?' style="border-left:4px solid '+s.c+'"':'')+'>'
+      +'<div class="lead-top">'
+      +'<div><div class="lead-name">'+(j.client_name||'Client')+'</div>'
+      +'<div class="lead-meta">🔧 '+(j.mechanic_name||'—')+(veh?' · 🚗 '+veh:'')+'</div></div>'
+      +'<span class="lead-status" style="background:'+s.bg+';color:'+s.c+'">'+s.icon+' '+s.label+'</span>'
+      +'</div>'
+      + box
+      +'<div class="lead-meta" style="margin-top:8px">'
+      +(j.client_phone?'📞 <a href="tel:'+j.client_phone+'">'+j.client_phone+'</a> · ':'')
+      +(j.client_email?'📧 '+j.client_email:'')
+      +(j.problem?'<br>🔩 '+j.problem:'')
+      +(j.client_address?'<br>📍 '+j.client_address:'')
+      +'</div>'
+      + (needsAction
+        ? '<div class="lead-actions">'
+          +(j.client_phone?'<a class="abtn" href="tel:'+j.client_phone+'" style="text-decoration:none">📞 Appeler le client</a>':'')
+          +(j.client_email?'<a class="abtn" href="mailto:'+j.client_email+'?subject='+encodeURIComponent('Votre demande Greaz — '+(j.booking_code||''))+'" style="text-decoration:none">📧 Écrire</a>':'')
+          +'<button class="abtn" style="background:#ECFDF5;border-color:#6EE7B7;color:#059669" onclick="jbResolve(\''+j.id+'\',\'accepte\')">✓ Client a accepté la nouvelle date</button>'
+          +'<button class="abtn" onclick="jbReassign(\''+j.id+'\')">🔧 Réassigner ailleurs</button>'
+          +'</div>'
+        : '')
+      +'</div>';
+  }).join('');
+}
+
+function fmtD(d){
+  if(!d) return '—';
+  try { return new Date(d+'T00:00:00').toLocaleDateString('fr-CA',{weekday:'short',day:'numeric',month:'short'}); }
+  catch(e){ return d; }
+}
+
+/* Le client a accepté la date proposée : on bascule le job en accepté */
+async function jbResolve(id, status){
+  var j = _jobsAdmin.find(function(x){ return x.id===id; });
+  if(!j) return;
+  if(!confirm('Confirmer que le client accepte le '+fmtD(j.proposed_date)+' ?\n\nLe rendez-vous sera ajouté au calendrier du mécano.')) return;
+  try {
+    var tl = j.timeline || [];
+    tl.push({ status:status, at:new Date().toISOString(), by:currentAdmin.email, note:'Client a accepté la nouvelle date' });
+    await db.collection('jobs').doc(id).update({
+      status: status,
+      date: j.proposed_date || j.date,
+      time_slot: j.proposed_slot || j.time_slot,
+      timeline: tl,
+      updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    loadJobsAdmin();
+  } catch(e){ alert('Erreur : '+e.message); }
+}
+
+function jbReassign(id){
+  var j = _jobsAdmin.find(function(x){ return x.id===id; });
+  if(!j) return;
+  alert('Pour réassigner :\n\n1. Va dans l\'onglet 👥 Clients\n2. Retrouve « '+(j.client_name||'')+' »\n3. Clique « 🔧 Assigner à un mécano »\n\nChoisis un autre garage dans la liste.');
+}
+
+/* ══════════ CRÉER UN COMPTE EMPLOYÉ POUR UN GARAGE ══════════ */
+async function createStaffAccount(garageId){
+  var g = _directory.find(function(x){ return x.id===garageId; });
+  if(!g) return;
+  if(!g.owner_uid){ alert('Ce garage doit d\'abord avoir un compte Pro (patron).'); return; }
+
+  var name = prompt('Nom de l\'employé pour '+g.name+' :');
+  if(!name || !name.trim()) return;
+
+  var email = prompt('Courriel de l\'employé :\n(c\'est avec ça qu\'il se connectera)');
+  if(!email || email.indexOf('@')===-1){ if(email!==null) alert('Courriel invalide.'); return; }
+
+  var pass = prompt('Mot de passe temporaire (min. 6 caractères) :', 'greaz'+Math.floor(Math.random()*9000+1000));
+  if(!pass) return;
+  if(pass.length < 6){ alert('Mot de passe trop court (min. 6 caractères).'); return; }
+
+  try {
+    var cfg = firebase.app().options;
+    var secondary;
+    try { secondary = firebase.app('secondary'); }
+    catch(e){ secondary = firebase.initializeApp(cfg, 'secondary'); }
+
+    var cred = await secondary.auth().createUserWithEmailAndPassword(email, pass);
+    var uid = cred.user.uid;
+    await secondary.auth().signOut();
+
+    await db.collection('garage_staff').doc(uid + '_' + garageId).set({
+      uid: uid,
+      garage_id: garageId,
+      garage_name: g.name || '',
+      name: name.trim(),
+      email: email,
+      role: 'employe',
+      created_at: firebase.firestore.FieldValue.serverTimestamp(),
+      created_by: currentAdmin.email,
+    });
+
+    alert('✅ Compte employé créé !\n\n'
+      +'Employé : '+name+'\n'
+      +'Garage : '+g.name+'\n'
+      +'Courriel : '+email+'\n'
+      +'Mot de passe : '+pass+'\n\n'
+      +'📎 Il se connecte sur le même portail :\n'
+      +'https://greaz-dash.github.io/panel/greaz-mecano.html\n\n'
+      +'Il verra les RDV, clients et véhicules — mais PAS les statistiques ni les réglages du garage.');
+  } catch(e){
+    var msg = e.message;
+    if(e.code === 'auth/email-already-in-use') msg = 'Ce courriel a déjà un compte Firebase.';
+    if(e.code === 'auth/weak-password') msg = 'Mot de passe trop faible (min. 6 caractères).';
+    alert('Erreur : '+msg);
   }
 }
 
