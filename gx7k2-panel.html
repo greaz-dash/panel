@@ -218,6 +218,45 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
   .info-grid{grid-template-columns:1fr 1fr;}
   .gff2{grid-template-columns:1fr;}
 }
+
+/* Envoyer une réservation directe au garage choisi */
+.assign-direct{background:linear-gradient(135deg,#EFF6FF,#F0FDF4);border:1px solid #BFDBFE;border-radius:11px;padding:13px 15px;margin-top:12px}
+.assign-direct-txt{font-size:13px;color:#1E3A5F;line-height:1.55;margin-bottom:11px}
+.assign-direct-btn{width:100%;padding:12px;background:var(--blue,#2563EB);color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;transition:filter .2s}
+.assign-direct-btn:hover{filter:brightness(1.08)}
+.assign-done{background:#ECFDF5;border:1px solid #A7F3D0;border-radius:9px;padding:11px 14px;margin-top:12px;font-size:13px;font-weight:600;color:#059669}
+
+/* ══ Cartes Assignations ══ */
+.jb-card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:1.15rem 1.25rem;margin-bottom:12px;transition:box-shadow .2s,transform .1s}
+.jb-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.06)}
+.jb-card.act{background:linear-gradient(to right,rgba(255,251,235,.5),#fff)}
+.jb-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.jb-ident{display:flex;align-items:center;gap:12px;min-width:0}
+.jb-avatar{width:44px;height:44px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px}
+.jb-who{min-width:0}
+.jb-name{font-size:16px;font-weight:700;color:#111827;line-height:1.2}
+.jb-sub{font-size:13px;color:var(--muted);margin-top:2px}
+.jb-badge{flex-shrink:0;font-size:12px;font-weight:600;padding:5px 11px;border-radius:20px;white-space:nowrap}
+.jb-assigned{font-size:13px;color:#374151;margin-top:12px;padding:7px 11px;background:#F9FAFB;border-radius:8px;display:inline-block}
+.jb-assigned-lbl{color:var(--muted)}
+.jb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:14px}
+.jb-cell{display:flex;flex-direction:column;gap:2px}
+.jb-k{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#9CA3AF}
+.jb-v{font-size:14px;color:#1F2937;font-weight:500}
+.jb-contact{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.jb-chip{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;background:#F3F4F6;border:1px solid var(--border);border-radius:9px;font-size:13px;color:#374151;text-decoration:none;transition:background .15s}
+.jb-chip:hover{background:#E5E7EB}
+.jb-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.jb-btn{flex:1;min-width:140px;padding:11px 14px;border:1px solid var(--border);border-radius:9px;background:#fff;font-size:13.5px;font-weight:600;color:#374151;cursor:pointer;font-family:inherit;transition:background .15s}
+.jb-btn:hover{background:#F9FAFB}
+.jb-btn-green{background:#ECFDF5;border-color:#6EE7B7;color:#059669}
+.jb-btn-green:hover{background:#D1FAE5}
+@media(max-width:640px){
+  .jb-head{flex-direction:column;gap:10px}
+  .jb-badge{align-self:flex-start}
+  .jb-btn{min-width:100%}
+  .jb-grid{grid-template-columns:1fr 1fr}
+}
 </style>
 </head>
 <body>
@@ -1046,6 +1085,17 @@ function rdvCard(a){
       +"</div></div>";
   }
 
+  // La réservation vise déjà un mécano précis : on peut la lui transmettre en un clic
+  var assignBox = '';
+  if(a.mechanic_id && a.status !== 'assigne' && !a.job_created){
+    assignBox = "<div class='assign-direct'>"
+      +"<div class='assign-direct-txt'>👉 Le client a choisi <b>"+(a.mechanic_name||'ce professionnel')+"</b>. Envoie-lui la demande pour qu'il accepte ou propose une autre date.</div>"
+      +"<button class='assign-direct-btn' onclick='sendToChosenPro(\""+a.id+"\")'>📨 Envoyer à "+(a.mechanic_name||'ce garage')+"</button>"
+      +"</div>";
+  } else if(a.job_created || a.status === 'assigne'){
+    assignBox = "<div class='assign-done'>✅ Envoyée à "+(a.mechanic_name||'ce professionnel')+" — suivi dans l'onglet 🔧 Assignations</div>";
+  }
+
   return "<div class='card "+st+"' id='card-"+a.id+"'>"
     +"<div class='card-top' onclick='toggleCard(\""+a.id+"\")'>"
     +"<div class='card-main'>"
@@ -1071,6 +1121,7 @@ function rdvCard(a){
     +"</div>"
     +"<div class='status-selector'><div class='status-selector-label'>Statut de la réservation</div><div class='status-btns'>"+stBtns+"</div></div>"
     +reviewLinkBox
+    + assignBox
     +"<div class='action-btns' style='margin-top:12px'>"
     +"<a href='tel:"+a.client_phone+"' class='abtn abtn-call'>📞 Appeler</a>"
     +"<a href='sms:"+a.client_phone+"' class='abtn abtn-sms'>💬 SMS</a>"
@@ -1078,6 +1129,80 @@ function rdvCard(a){
     +"<button class='abtn abtn-del' onclick='deleteRdv(\""+a.id+"\")'>🗑 Supprimer</button>"
     +"</div></div></div>";
 }
+/* Transmet une réservation directe au mécano que le client a choisi.
+   Crée le job dans les Assignations, sans avoir à re-sélectionner le garage. */
+async function sendToChosenPro(id){
+  var a = _rdvs.find(function(x){ return x.id===id; });
+  if(!a){ alert('Réservation introuvable.'); return; }
+  if(!a.mechanic_id){ alert('Cette réservation ne cible aucun professionnel précis.'); return; }
+
+  // Retrouver le garage dans l'annuaire pour connaître son owner_uid (compte Pro)
+  var mec = _directory.find(function(g){ return g.id===a.mechanic_id; });
+  var ownerUid = mec ? (mec.owner_uid || '') : '';
+  var mecName = a.mechanic_name || (mec ? mec.name : '') || 'le professionnel';
+
+  if(!confirm('Envoyer cette demande à '+mecName+' ?\n\n'
+    +(a.client_prenom||'')+' '+(a.client_nom||'')+'\n'
+    +(a.date||'')+' · '+(SLOT_LABELS[a.time_slot]||a.time_slot||'')+'\n\n'
+    +'Il pourra accepter, refuser ou proposer une autre date.')) return;
+
+  var code = a.booking_code || ('GZ-'+Math.floor(Math.random()*90000+10000));
+
+  try {
+    await db.collection('jobs').add({
+      mechanic_id: a.mechanic_id,
+      mechanic_name: mecName,
+      mechanic_owner_uid: ownerUid,
+
+      client_name: ((a.client_prenom||'')+' '+(a.client_nom||'')).trim(),
+      client_phone: a.client_phone || '',
+      client_email: a.client_email || '',
+      client_address: a.client_address || '',
+
+      vehicle_type: a.vehicle_type || '',
+      vehicle_make: a.vehicle_make || '',
+      vehicle_model: a.vehicle_model || '',
+      vehicle_year: a.vehicle_year || '',
+
+      problem: a.problem || '',
+      description: a.description || '',
+      admin_note: 'Réservation directe — client a choisi ce pro sur le site',
+
+      date: a.date || '',
+      time_slot: a.time_slot || '',
+
+      booking_code: code,
+      status: 'envoye',
+      timeline: [{ status:'envoye', at:new Date().toISOString(), by:currentAdmin.email, note:'Réservation directe transmise' }],
+
+      source: 'appointments',
+      source_id: id,
+      assigned_by: currentAdmin.email,
+      created_at: firebase.firestore.FieldValue.serverTimestamp(),
+      updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Marquer la réservation pour ne pas l'envoyer deux fois
+    await db.collection('appointments').doc(id).update({
+      job_created: true,
+      status: (a.status==='en_attente' ? 'assigne' : a.status),
+    });
+    a.job_created = true;
+
+    if(ownerUid){
+      alert('✅ Demande envoyée à '+mecName+' !\n\nIl la voit tout de suite dans son espace Pro. Suis sa réponse dans l\'onglet 🔧 Assignations.');
+    } else {
+      alert('⚠️ '+mecName+' n\'a pas encore de compte Pro.\n\nLa demande est enregistrée dans les Assignations, mais appelle-le au '+((mec&&mec.phone)||a.client_phone||'—')+' pour le prévenir.\n\nCrée-lui un compte Pro depuis l\'onglet Annuaire pour automatiser ça.');
+    }
+
+    renderRdv();
+    loadJobsAdmin();
+  } catch(e){
+    alert('Erreur : '+e.message);
+  }
+}
+
+/* styles injectés plus bas */
 function setRdvStatus(id, status){
   db.collection("appointments").doc(id).update({status:status, updated_at:firebase.firestore.FieldValue.serverTimestamp()})
     .then(function(){
@@ -2831,25 +2956,45 @@ function renderJobsAdmin(){
         +'</div>';
     }
 
-    return '<div class="lead-card"'+(needsAction?' style="border-left:4px solid '+s.c+'"':'')+'>'
-      +'<div class="lead-top">'
-      +'<div><div class="lead-name">'+(j.client_name||'Client')+'</div>'
-      +'<div class="lead-meta">🔧 '+(j.mechanic_name||'—')+(veh?' · 🚗 '+veh:'')+'</div></div>'
-      +'<span class="lead-status" style="background:'+s.bg+';color:'+s.c+'">'+s.icon+' '+s.label+'</span>'
+    var initials = (j.client_name||'C').trim().split(/\s+/).map(function(w){return w[0];}).slice(0,2).join('').toUpperCase();
+
+    return '<div class="jb-card'+(needsAction?' act':'')+'" style="'+(needsAction?'border-left:3px solid '+s.c:'')+'">'
+
+      // En-tête : avatar + client + statut
+      +'<div class="jb-head">'
+      +'<div class="jb-ident">'
+      +'<div class="jb-avatar" style="background:'+s.bg+';color:'+s.c+'">'+initials+'</div>'
+      +'<div class="jb-who">'
+      +'<div class="jb-name">'+(j.client_name||'Client')+'</div>'
+      +'<div class="jb-sub">'+(veh?'🚗 '+veh:'Véhicule non précisé')+'</div>'
+      +'</div></div>'
+      +'<span class="jb-badge" style="background:'+s.bg+';color:'+s.c+'">'+s.icon+' '+s.label+'</span>'
       +'</div>'
+
+      // Assigné à
+      +'<div class="jb-assigned"><span class="jb-assigned-lbl">Assigné à</span> <b>'+(j.mechanic_name||'—')+'</b></div>'
+
       + box
-      +'<div class="lead-meta" style="margin-top:8px">'
-      +(j.client_phone?'📞 <a href="tel:'+j.client_phone+'">'+j.client_phone+'</a> · ':'')
-      +(j.client_email?'📧 '+j.client_email:'')
-      +(j.problem?'<br>🔩 '+j.problem:'')
-      +(j.client_address?'<br>📍 '+j.client_address:'')
+
+      // Détails en grille
+      +'<div class="jb-grid">'
+      +(j.problem?'<div class="jb-cell"><span class="jb-k">Service</span><span class="jb-v">'+j.problem+'</span></div>':'')
+      +((j.date)?'<div class="jb-cell"><span class="jb-k">Date souhaitée</span><span class="jb-v">'+fmtD(j.date)+(j.time_slot?' · '+(JB_SLOT[j.time_slot]||j.time_slot):'')+'</span></div>':'')
+      +(j.client_address?'<div class="jb-cell"><span class="jb-k">Adresse</span><span class="jb-v">'+j.client_address+'</span></div>':'')
+      +(j.booking_code?'<div class="jb-cell"><span class="jb-k">Code</span><span class="jb-v" style="font-family:monospace;color:#2563EB">'+j.booking_code+'</span></div>':'')
       +'</div>'
+
+      // Contact cliquable
+      +'<div class="jb-contact">'
+      +(j.client_phone?'<a class="jb-chip" href="tel:'+j.client_phone+'">📞 '+j.client_phone+'</a>':'')
+      +(j.client_email?'<a class="jb-chip" href="mailto:'+j.client_email+'">📧 '+j.client_email+'</a>':'')
+      +'</div>'
+
+      // Actions quand ça demande une décision
       + (needsAction
-        ? '<div class="lead-actions">'
-          +(j.client_phone?'<a class="abtn" href="tel:'+j.client_phone+'" style="text-decoration:none">📞 Appeler le client</a>':'')
-          +(j.client_email?'<a class="abtn" href="mailto:'+j.client_email+'?subject='+encodeURIComponent('Votre demande Greaz — '+(j.booking_code||''))+'" style="text-decoration:none">📧 Écrire</a>':'')
-          +'<button class="abtn" style="background:#ECFDF5;border-color:#6EE7B7;color:#059669" onclick="jbResolve(\''+j.id+'\',\'accepte\')">✓ Client a accepté la nouvelle date</button>'
-          +'<button class="abtn" onclick="jbReassign(\''+j.id+'\')">🔧 Réassigner ailleurs</button>'
+        ? '<div class="jb-actions">'
+          +'<button class="jb-btn jb-btn-green" onclick="jbResolve(\''+j.id+'\',\'accepte\')">✓ Client a accepté la date</button>'
+          +'<button class="jb-btn" onclick="jbReassign(\''+j.id+'\')">🔧 Réassigner ailleurs</button>'
           +'</div>'
         : '')
       +'</div>';
