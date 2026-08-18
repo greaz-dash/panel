@@ -1057,14 +1057,31 @@ function renderMembres(){
     var btn = isMbr
       ? '<button class="tool-btn" style="background:#FEE2E2;color:#B91C1C;border-color:#FECACA" onclick="toggleMembre(\''+c._id+'\',true)">Désactiver</button>'
       : '<button class="tool-btn green" onclick="toggleMembre(\''+c._id+'\',false)">✓ Activer membre</button>';
-    return '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:15px 17px;margin-bottom:9px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">'
+    var delBtn = '<button class="tool-btn" style="background:transparent;color:#9CA3AF;border-color:#E5E7EB;padding:8px 12px" title="Supprimer ce compte" onclick="deleteMembre(\''+c._id+'\',\''+(name.replace(/'/g,"")||'ce compte')+'\')">🗑</button>';
+    return '<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:15px 17px;margin-bottom:9px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
       + '<div style="flex:1;min-width:180px">'
       +   '<div style="font-weight:700;font-size:14.5px">'+name+' '+badge+'</div>'
       +   '<div style="font-size:12.5px;color:#6B7280;margin-top:2px">'+(c.email||'—')+(c.phone?' · '+c.phone:'')+'</div>'
       + '</div>'
       + btn
+      + delBtn
       + '</div>';
   }).join('');
+}
+
+async function deleteMembre(uid, name){
+  if(!confirm('Supprimer définitivement le compte de "'+name+'" ?\n\nSes infos de profil seront effacées de Greaz. Cette action est irréversible.')) return;
+  try {
+    await db.collection('clients').doc(uid).delete();
+    // Retire de la liste locale
+    _mbrClients = _mbrClients.filter(function(x){ return x._id !== uid; });
+    renderMembres();
+    var count = _mbrClients.filter(function(x){ return x.membre===true; }).length;
+    var badge = document.getElementById('tbmembres');
+    if(badge) badge.textContent = count;
+  } catch(e){
+    alert('Erreur : '+(e.message||e)+'\n\nSeul le fondateur peut supprimer un compte. Vérifie que t\'es connecté avec le bon accès pis que les règles Firestore sont publiées.');
+  }
 }
 
 async function toggleMembre(uid, currentlyMember){
