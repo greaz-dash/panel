@@ -286,6 +286,15 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
   </div>
 </div>
 
+<!-- ESPACE AFFILIÉ (vue restreinte — jamais le dashboard admin) -->
+<div class="login-screen" id="affiliateScreen" style="background:linear-gradient(160deg,#171A20,#2A2140)">
+  <div style="max-width:480px;width:100%">
+    <div class="login-logo" style="text-align:center">Gre<span style="color:#8B5CF6">az</span></div>
+    <div class="login-sub" style="text-align:center;margin-bottom:1.5rem">Espace affilié</div>
+    <div id="affiliate-body"><div style="text-align:center;color:rgba(255,255,255,.6);padding:2rem">Chargement de tes stats...</div></div>
+  </div>
+</div>
+
 <!-- APP -->
 <div class="app" id="app">
 
@@ -409,6 +418,16 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
     <div class="panel" id="panel-membres">
       <div style="background:#ECFDF5;border:1px solid #6EE7B7;border-radius:10px;padding:12px 14px;font-size:12.5px;color:#065F46;line-height:1.6;margin-bottom:1rem">
         <b>💳 Gestion des membres Greaz Collection.</b> Quand quelqu'un paie sur Square (14,99$/mois), tu vois son courriel dans ton tableau Square. Cherche-le ici, pis clique <b>Activer</b>. Le compte devient membre pis ses demandes passent sans paywall. Si un abonnement est annulé, clique <b>Désactiver</b>.
+      </div>
+
+      <!-- Compteur d'économies affiché sur la landing -->
+      <div id="mbr-savings-box" style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:12px;padding:14px 17px;margin-bottom:1rem;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:700;font-size:13.5px;color:#065F46">💰 Économies affichées sur le site</div>
+          <div style="font-size:12px;color:#047857;margin-top:2px">Le montant "X $ économisés" dans la bande d'en-tête de ta landing.</div>
+        </div>
+        <input type="number" id="savings-input" placeholder="14000" style="width:120px;padding:9px 12px;border:1px solid #86EFAC;border-radius:9px;font-size:14px;font-weight:700">
+        <button class="tool-btn green" onclick="saveSavings()">💾 Mettre à jour</button>
       </div>
 
       <!-- Demandes en attente d'abonnement (paywall atteint) -->
@@ -734,21 +753,28 @@ async function doLogin(){
     // 1. Authentification Firebase
     var cred = await firebase.auth().signInWithEmailAndPassword(email, pass);
 
-    // 2. Vérification que ce compte est bien un admin
+    // 2. Est-ce un admin ?
     var adminDoc = await db.collection('admins').doc(cred.user.uid).get();
-    if(!adminDoc.exists){
-      await firebase.auth().signOut();
-      showLoginError("Ce compte n'a pas les droits administrateur.");
-      btn.disabled = false; btn.textContent = "Se connecter →";
+    if(adminDoc.exists){
+      currentAdmin = cred.user;
+      currentRole = adminDoc.data().role || 'support';
+      document.getElementById("loginScreen").classList.remove("show");
+      document.getElementById("app").classList.add("show");
+      init();
       return;
     }
 
-    // 3. Accès accordé
-    currentAdmin = cred.user;
-    currentRole = adminDoc.data().role || 'support';
-    document.getElementById("loginScreen").classList.remove("show");
-    document.getElementById("app").classList.add("show");
-    init();
+    // 3. Sinon, est-ce une personne affiliée ? (elle ne voit QUE son espace)
+    var affSnap = await db.collection('affiliates').where('owner_email','==',cred.user.email).limit(1).get();
+    if(!affSnap.empty){
+      showAffiliateSpace(affSnap.docs[0]);
+      return;
+    }
+
+    // 4. Ni admin ni affilié → refus
+    await firebase.auth().signOut();
+    showLoginError("Ce compte n'a pas accès à Greaz.");
+    btn.disabled = false; btn.textContent = "Se connecter →";
   } catch(e){
     var msg = "Identifiants incorrects.";
     if(e.code === 'auth/too-many-requests') msg = "Trop de tentatives. Réessaie dans quelques minutes.";
@@ -774,12 +800,78 @@ firebase.auth().onAuthStateChanged(async function(user){
         document.getElementById("loginScreen").classList.remove("show");
         document.getElementById("app").classList.add("show");
         init();
-      } else {
-        await firebase.auth().signOut();
+        return;
       }
+      // Sinon, peut-être une affiliée qui revient
+      var affSnap = await db.collection('affiliates').where('owner_email','==',user.email).limit(1).get();
+      if(!affSnap.empty){
+        showAffiliateSpace(affSnap.docs[0]);
+        return;
+      }
+      await firebase.auth().signOut();
     } catch(e){ console.log('Auth check:', e.message); }
   }
 });
+
+/* ══════════ ESPACE AFFILIÉ (vue restreinte) ══════════
+   Une affiliée voit SEULEMENT ses stats. Le dashboard admin (#app)
+   n'est jamais affiché et init() (chargement des données clients)
+   n'est jamais appelé. Les règles Firestore bloquent tout le reste. */
+function showAffiliateSpace(doc){
+  var a = Object.assign({ id:doc.id }, doc.data());
+  document.getElementById("loginScreen").classList.remove("show");
+  document.getElementById("app").classList.remove("show");
+  document.getElementById("affiliateScreen").classList.add("show");
+
+  var money = function(n){ return Math.round(n).toLocaleString('fr-CA') + ' $'; };
+  var referrals = a.referral_count || 0;
+  var subscribed = a.subscribed_count || 0;
+  var earnings = a.earnings || 0;
+  var firstName = (a.name||'').split(' ')[0] || 'toi';
+
+  var rewardTxt;
+  if(a.commission_type === 'first_month'){
+    rewardTxt = 'Tu reçois <b>le premier mois (14,99$)</b> de chaque personne qui s\'abonne grâce à ton lien.';
+  } else if(a.commission_type === 'fixed'){
+    rewardTxt = 'Tu reçois <b>'+(a.commission_value||0)+'$</b> pour chaque personne que t\'amènes.';
+  } else {
+    rewardTxt = 'Tu reçois <b>'+(a.commission_value||0)+'%</b> sur chaque vente que t\'amènes.';
+  }
+  var link = 'https://greaz.ca/?ref=' + (a.code||'');
+
+  var css = {
+    stat: 'background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:22px;text-align:center',
+    num: 'font-size:2.2rem;font-weight:700;line-height:1;color:#fff;font-family:inherit',
+    lbl: 'font-size:12px;color:rgba(255,255,255,.55);margin-top:6px;font-weight:600',
+  };
+
+  document.getElementById("affiliate-body").innerHTML =
+    '<div style="font-size:1.4rem;font-weight:700;color:#fff;margin-bottom:.2rem;text-align:center">Salut '+firstName+' ! 💜</div>'
+    +'<div style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:1.5rem;text-align:center">Voici comment ça avance de ton bord.</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">'
+    +  '<div style="'+css.stat+'"><div style="'+css.num+'">'+referrals+'</div><div style="'+css.lbl+'">Personnes amenées</div></div>'
+    +  '<div style="'+css.stat+'"><div style="'+css.num+'">'+subscribed+'</div><div style="'+css.lbl+'">Abonnées</div></div>'
+    +'</div>'
+    +'<div style="background:linear-gradient(135deg,#8B5CF6,#7C3AED);border-radius:18px;padding:24px;text-align:center;margin-bottom:16px">'
+    +  '<div style="font-size:2.6rem;font-weight:700;line-height:1;color:#fff">'+money(earnings)+'</div>'
+    +  '<div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:6px;font-weight:600">Tes gains à ce jour</div>'
+    +'</div>'
+    +'<div style="background:rgba(0,168,98,.12);border:1px solid rgba(0,168,98,.3);border-radius:12px;padding:13px 15px;font-size:13px;color:#7EE8B0;line-height:1.5;margin-bottom:16px">🎁 '+rewardTxt+'</div>'
+    +'<div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:18px;margin-bottom:16px">'
+    +  '<div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:4px">Ton lien de partage 🔗</div>'
+    +  '<div style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:12px;line-height:1.5">Partage-le sur tes réseaux. Chaque personne qui l\'utilise est reliée à toi.</div>'
+    +  '<div style="display:flex;gap:8px"><div id="aff-link" style="flex:1;background:rgba(139,92,246,.15);border-radius:10px;padding:12px 14px;font-family:monospace;font-size:12.5px;color:#C4B5FD;font-weight:600;word-break:break-all;display:flex;align-items:center">'+link+'</div>'
+    +  '<button onclick="copyAffLink()" style="background:#8B5CF6;color:#fff;border:none;border-radius:10px;padding:0 16px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">Copier</button></div>'
+    +'</div>'
+    +'<button onclick="logout()" style="width:100%;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.15);color:rgba(255,255,255,.7);padding:13px;border-radius:12px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer">Me déconnecter</button>';
+}
+
+function copyAffLink(){
+  var link = document.getElementById('aff-link').textContent;
+  navigator.clipboard.writeText(link).then(function(){
+    var b = event.target; var old = b.textContent; b.textContent = '✓'; setTimeout(function(){ b.textContent = old; }, 1500);
+  }).catch(function(){ alert('Ton lien : '+link); });
+}
 
 
 
@@ -1005,6 +1097,7 @@ async function loadMembres(){
     });
     renderMembres();
     loadWaitingDemandes();
+    loadSavings();
     var count = _mbrClients.filter(function(c){ return c.membre===true; }).length;
     var badge = document.getElementById('tbmembres');
     if(badge) badge.textContent = count;
@@ -1067,6 +1160,29 @@ function renderMembres(){
       + delBtn
       + '</div>';
   }).join('');
+}
+
+/* Compteur d'économies affiché sur la landing (settings/stats.savings) */
+function loadSavings(){
+  var inp = document.getElementById('savings-input');
+  if(!inp) return;
+  db.collection('settings').doc('stats').get().then(function(doc){
+    var val = (doc.exists && typeof doc.data().savings === 'number') ? doc.data().savings : 14000;
+    inp.value = val;
+  }).catch(function(){ inp.value = 14000; });
+}
+
+async function saveSavings(){
+  var inp = document.getElementById('savings-input');
+  if(!inp) return;
+  var val = parseInt(inp.value, 10);
+  if(isNaN(val) || val < 0){ alert('Entre un montant valide (ex. 14000).'); return; }
+  try {
+    await db.collection('settings').doc('stats').set({ savings: val }, { merge:true });
+    alert('✓ Montant mis à jour ! La landing affichera maintenant '+val.toLocaleString('fr-CA')+' $ économisés.');
+  } catch(e){
+    alert('Erreur : '+(e.message||e)+'\n\nAs-tu publié les règles Firestore mises à jour ? (l\'admin doit pouvoir écrire dans settings)');
+  }
 }
 
 async function deleteMembre(uid, name){
@@ -3206,9 +3322,34 @@ function loadAffiliates(){
     _affiliates = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
     document.getElementById('tb6').textContent = _affiliates.filter(function(a){ return a.active!==false; }).length;
     renderAffiliates();
+    syncAffiliateStats();   // met à jour les compteurs que l'affilié voit dans son espace
   }).catch(function(e){
     el.innerHTML = '<div class="loading">⚠️ '+e.message+'</div>';
   });
+}
+
+// Écrit les stats agrégées sur chaque fiche affilié (nombre + abonnés + gains).
+// C'est ce que l'affilié voit dans affilie.html — sans jamais accéder aux données clients.
+function syncAffiliateStats(){
+  db.collection('clients').get().then(function(snap){
+    var clients = snap.docs.map(function(d){ return d.data(); });
+    _affiliates.forEach(function(a){
+      var code = (a.code||'').toUpperCase();
+      if(!code) return;
+      var stats = countReferrals(a.code);
+      var subscribed = clients.filter(function(c){
+        return c.membre===true && (c.referral_code||'').toUpperCase()===code;
+      }).length;
+      var earnings = 0;
+      if(a.commission_type === 'first_month'){ earnings = subscribed * 14.99; }
+      else if(a.commission_type === 'fixed'){ earnings = stats.total * (a.commission_value||0); }
+      // (le % nécessite un montant de vente : laissé à 0, calculé à la main)
+      var patch = { referral_count: stats.total, subscribed_count: subscribed, earnings: Math.round(earnings*100)/100 };
+      if(a.referral_count!==patch.referral_count || a.subscribed_count!==patch.subscribed_count || a.earnings!==patch.earnings){
+        db.collection('affiliates').doc(a.id).set(patch, { merge:true }).catch(function(){});
+      }
+    });
+  }).catch(function(){});
 }
 
 // Compte les demandes attribuées à chaque code (dans leads + appointments)
@@ -3231,10 +3372,14 @@ function renderAffiliates(){
     var isActive = a.active !== false;
     var commissionTxt = a.commission_type === 'fixed'
       ? (a.commission_value||0)+'$ par RDV'
-      : (a.commission_value||0)+'% par vente';
+      : a.commission_type === 'first_month'
+        ? '14,99$ (1er mois de chaque abonné)'
+        : (a.commission_value||0)+'% par vente';
     var estimated = a.commission_type === 'fixed'
       ? (stats.total * (a.commission_value||0))
-      : null; // % nécessite un montant de vente, calculé manuellement
+      : a.commission_type === 'first_month'
+        ? (stats.total * 14.99)
+        : null; // % nécessite un montant de vente, calculé manuellement
     return '<div class="directory-card" style="border-left:4px solid #8B5CF6">'
       +'<div class="directory-top"><div style="flex:1">'
       +'<div class="directory-name">🎯 '+(a.name||'—')
@@ -3254,6 +3399,19 @@ function renderAffiliates(){
       +'<button class="abtn abtn-del" style="font-size:12px" onclick="deleteAffiliate(\''+a.id+'\')">🗑</button>'
       +'</div></div>';
   }).join('');
+}
+
+function affTypeChange(type){
+  var lbl = document.getElementById('aff-cval-label');
+  var inp = document.getElementById('aff-cval');
+  if(type === 'first_month'){
+    lbl.textContent = 'Fixe : 14,99$';
+    inp.value = ''; inp.disabled = true; inp.placeholder = '14,99 (automatique)';
+  } else if(type === 'percent'){
+    lbl.textContent = 'Pourcentage (%)'; inp.disabled = false; inp.placeholder = '10';
+  } else {
+    lbl.textContent = 'Montant ($) par RDV'; inp.disabled = false; inp.placeholder = '10';
+  }
 }
 
 function openAffiliateForm(affId){
@@ -3279,14 +3437,19 @@ function openAffiliateForm(affId){
     +'<div style="margin-bottom:1rem"><label style="'+lbl+'">Courriel <span style="font-weight:400">(optionnel)</span></label>'
     +'<input id="aff-email" type="email" value="'+(a?String(a.email||''):'')+'" placeholder="marie@courriel.com" style="'+fld+'"></div>'
 
+    +'<div style="margin-bottom:1rem;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:12px 14px"><label style="'+lbl+'">🔑 Courriel de connexion à SON dashboard</label>'
+    +'<input id="aff-owner-email" type="email" value="'+(a?String(a.owner_email||''):'')+'" placeholder="influenceuse@courriel.com" style="'+fld+'">'
+    +'<div style="font-size:11px;color:#7C3AED;margin-top:5px;line-height:1.5">Crée-lui un compte dans Firebase Console (Authentication) avec ce courriel, pis donne-lui l\'accès à <b>affilie.html</b>. Elle verra seulement ses stats.</div></div>'
+
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1.25rem">'
     +'<div><label style="'+lbl+'">Type de commission</label>'
-    +'<select id="aff-ctype" style="'+fld+'" onchange="document.getElementById(\'aff-cval-label\').textContent=this.value===\'fixed\'?\'Montant ($) par RDV\':\'Pourcentage (%)\'">'
+    +'<select id="aff-ctype" style="'+fld+'" onchange="affTypeChange(this.value)">'
     +'<option value="fixed"'+(a&&a.commission_type==='fixed'?' selected':'')+'>Montant fixe ($)</option>'
     +'<option value="percent"'+(a&&a.commission_type==='percent'?' selected':'')+'>Pourcentage (%)</option>'
+    +'<option value="first_month"'+(a&&a.commission_type==='first_month'?' selected':'')+'>Premier mois offert (14,99$)</option>'
     +'</select></div>'
-    +'<div><label style="'+lbl+'" id="aff-cval-label">'+(a&&a.commission_type==='percent'?'Pourcentage (%)':'Montant ($) par RDV')+'</label>'
-    +'<input id="aff-cval" type="number" step="any" value="'+(a?(a.commission_value||''):'')+'" placeholder="10" style="'+fld+'"></div>'
+    +'<div><label style="'+lbl+'" id="aff-cval-label">'+(a&&a.commission_type==='percent'?'Pourcentage (%)':(a&&a.commission_type==='first_month'?'Fixe : 14,99$':'Montant ($) par RDV'))+'</label>'
+    +'<input id="aff-cval" type="number" step="any" value="'+(a?(a.commission_value||''):'')+'" placeholder="10" style="'+fld+'"'+(a&&a.commission_type==='first_month'?' disabled':'')+'></div>'
     +'</div>'
 
     +'<div style="display:flex;gap:8px">'
@@ -3315,6 +3478,7 @@ async function saveAffiliate(affId){
 
   var data = {
     name: name, code: code, email: email,
+    owner_email: (document.getElementById('aff-owner-email').value||'').trim().toLowerCase(),
     commission_type: ctype, commission_value: cval,
     active: true,
     updated_at: firebase.firestore.FieldValue.serverTimestamp()
