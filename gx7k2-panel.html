@@ -3394,6 +3394,7 @@ function renderAffiliates(){
       +'</div></div></div>'
       +'<div class="directory-actions" style="flex-wrap:wrap">'
       +'<button class="abtn" style="background:#EDE9FE;border-color:#C4B5FD;color:#6D28D9;font-size:12px;font-weight:700" onclick="createAffiliateLogin(\''+a.id+'\')">🔑 Créer son accès</button>'
+      +'<button class="abtn" style="background:#FEF3C7;border-color:#FCD34D;color:#92400E;font-size:12px" onclick="resetAffiliatePassword(\''+a.id+'\')">🔄 Réinitialiser mdp</button>'
       +'<button class="abtn" style="background:#F5F3FF;border-color:#DDD6FE;color:#7C3AED;font-size:12px" onclick="viewAffiliateReferrals(\''+a.id+'\')">📋 Voir les demandes</button>'
       +'<button class="abtn" style="background:var(--bluelt);border-color:var(--bluebdr);color:var(--blue2);font-size:12px" onclick="openAffiliateForm(\''+a.id+'\')">✏️ Modifier</button>'
       +'<button class="abtn" style="background:var(--surface);border-color:var(--border);color:var(--muted);font-size:12px" onclick="toggleAffiliate(\''+a.id+'\','+(isActive?'false':'true')+')">'+(isActive?'🚫 Désactiver':'✓ Activer')+'</button>'
@@ -3415,6 +3416,27 @@ function affTypeChange(type){
   }
 }
 
+/* Envoie un courriel de réinitialisation de mot de passe à l'affiliée.
+   Elle clique le lien dans le courriel pis choisit son propre mot de passe. */
+async function resetAffiliatePassword(affId){
+  var a = _affiliates.find(function(x){ return x.id===affId; });
+  if(!a) return;
+  if(!a.owner_email){
+    alert('⚠️ '+(a.name||'Cette affiliée')+' n\'a pas de courriel de connexion. Clique "✏️ Modifier" pour l\'ajouter.');
+    return;
+  }
+  if(!confirm('Envoyer un courriel de réinitialisation à '+a.owner_email+' ?\n\n'+(a.name||'Elle')+' recevra un courriel pour choisir son propre mot de passe.')) return;
+  try {
+    await firebase.auth().sendPasswordResetEmail(a.owner_email);
+    alert('✅ Courriel envoyé à '+a.owner_email+' !\n\nDis à '+(a.name||'l\'affiliée')+' de vérifier sa boîte de réception (pis les indésirables/spam). Elle clique le lien, choisit son mot de passe, pis elle peut se connecter.');
+  } catch(e){
+    var msg = e.message;
+    if(e.code === 'auth/user-not-found') msg = 'Aucun compte trouvé pour ce courriel. Le compte a jamais été créé — clique d\'abord "🔑 Créer son accès".';
+    if(e.code === 'auth/invalid-email') msg = 'Courriel invalide. Corrige-le via "Modifier".';
+    alert('⚠️ '+msg);
+  }
+}
+
 /* Crée le compte de connexion d'une affiliée, directement depuis sa fiche.
    Utilise une 2e instance Firebase pour ne pas déconnecter l'admin. */
 async function createAffiliateLogin(affId){
@@ -3424,9 +3446,12 @@ async function createAffiliateLogin(affId){
     alert('⚠️ '+(a.name||'Cette affiliée')+' n\'a pas de "Courriel de connexion".\n\nClique d\'abord "✏️ Modifier", ajoute son courriel dans la case violette, enregistre, PUIS reviens créer son accès.');
     return;
   }
-  // Mot de passe temporaire généré automatiquement
-  var pass = 'Greaz' + Math.floor(1000 + Math.random()*9000) + '!';
-  if(!confirm('Créer le compte de connexion pour '+(a.name||'cette affiliée')+' ?\n\nCourriel : '+a.owner_email+'\nMot de passe : '+pass+'\n\n(Tu vas pouvoir copier ces infos après pour les lui donner.)')) return;
+  // L'admin choisit le mot de passe (il le voit, il le contrôle)
+  var suggested = 'Greaz' + Math.floor(1000 + Math.random()*9000);
+  var pass = prompt('Choisis un mot de passe pour '+(a.name||'cette affiliée')+' (minimum 6 caractères).\n\nTu peux garder celui suggéré ou mettre le tien :', suggested);
+  if(pass === null) return;                 // annulé
+  pass = pass.trim();
+  if(pass.length < 6){ alert('⚠️ Le mot de passe doit faire au moins 6 caractères.'); return; }
 
   var secondaryApp = null;
   try {
@@ -3440,13 +3465,13 @@ async function createAffiliateLogin(affId){
     var dashUrl = window.location.href.split('#')[0].split('?')[0];
     prompt(
       '✅ Compte créé pour '+(a.name||'l\'affiliée')+' !\n\n'
-      +'Copie ces infos (Ctrl+C) pis envoie-les-lui :',
+      +'Voici ses identifiants (copie-les avec Ctrl+C) :',
       'Lien : '+dashUrl+' | Courriel : '+a.owner_email+' | Mot de passe : '+pass
     );
   } catch(e){
     var msg = e.message;
-    if(e.code === 'auth/email-already-in-use') msg = 'Ce courriel a déjà un compte Firebase. Elle peut donc déjà se connecter avec (le compte existe). Si elle a oublié son mot de passe, réinitialise-le dans Firebase Console.';
-    if(e.code === 'auth/weak-password') msg = 'Mot de passe trop faible.';
+    if(e.code === 'auth/email-already-in-use') msg = 'Ce courriel a DÉJÀ un compte (tu l\'as créé avant, mais le mot de passe est perdu).\n\nPour tester avec un mot de passe que tu contrôles, 2 choix :\n\n1. Va dans Firebase Console → Authentication → supprime '+a.owner_email+', PUIS reclique "Créer son accès".\n\n2. OU clique "Modifier", change le courriel de connexion pour un courriel de TEST (ex. test@greaz.ca), enregistre, pis recrée l\'accès.';
+    if(e.code === 'auth/weak-password') msg = 'Mot de passe trop faible (min. 6 caractères).';
     if(e.code === 'auth/invalid-email') msg = 'Le courriel de connexion est invalide. Corrige-le via "Modifier".';
     alert('⚠️ '+msg);
   }
