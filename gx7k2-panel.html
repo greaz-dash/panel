@@ -780,7 +780,9 @@ async function doLogin(){
     if(e.code === 'auth/too-many-requests') msg = "Trop de tentatives. Réessaie dans quelques minutes.";
     if(e.code === 'auth/invalid-email') msg = "Courriel invalide.";
     if(e.code === 'auth/network-request-failed') msg = "Problème de connexion réseau.";
-    showLoginError(msg);
+    if(e.code === 'auth/user-disabled') msg = "Ce compte a été désactivé.";
+    // Diagnostic : on montre le code Firebase exact (temporaire, pour déboguer)
+    showLoginError(msg + '  [' + (e.code || e.message || 'erreur inconnue') + ']');
     btn.disabled = false; btn.textContent = "Se connecter →";
   }
 }
@@ -849,14 +851,15 @@ function showAffiliateSpace(doc){
     '<div style="font-size:1.4rem;font-weight:700;color:#fff;margin-bottom:.2rem;text-align:center">Salut '+firstName+' ! 💜</div>'
     +'<div style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:1.5rem;text-align:center">Voici comment ça avance de ton bord.</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">'
-    +  '<div style="'+css.stat+'"><div style="'+css.num+'">'+referrals+'</div><div style="'+css.lbl+'">Personnes amenées</div></div>'
-    +  '<div style="'+css.stat+'"><div style="'+css.num+'">'+subscribed+'</div><div style="'+css.lbl+'">Abonnées</div></div>'
+    +  '<div style="'+css.stat+'"><div style="'+css.num+';color:rgba(255,255,255,.7)">'+referrals+'</div><div style="'+css.lbl+'">Ont utilisé ton lien</div><div style="font-size:10.5px;color:rgba(255,255,255,.4);margin-top:3px">pas encore abonnées</div></div>'
+    +  '<div style="'+css.stat+';border-color:rgba(0,168,98,.4)"><div style="'+css.num+';color:#4ADE80">'+subscribed+'</div><div style="'+css.lbl+'">Abonnées payantes</div><div style="font-size:10.5px;color:#4ADE80;margin-top:3px">= tes gains ✓</div></div>'
     +'</div>'
     +'<div style="background:linear-gradient(135deg,#8B5CF6,#7C3AED);border-radius:18px;padding:24px;text-align:center;margin-bottom:16px">'
     +  '<div style="font-size:2.6rem;font-weight:700;line-height:1;color:#fff">'+money(earnings)+'</div>'
     +  '<div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:6px;font-weight:600">Tes gains à ce jour</div>'
     +'</div>'
-    +'<div style="background:rgba(0,168,98,.12);border:1px solid rgba(0,168,98,.3);border-radius:12px;padding:13px 15px;font-size:13px;color:#7EE8B0;line-height:1.5;margin-bottom:16px">🎁 '+rewardTxt+'</div>'
+    +'<div style="background:rgba(0,168,98,.12);border:1px solid rgba(0,168,98,.3);border-radius:12px;padding:13px 15px;font-size:13px;color:#7EE8B0;line-height:1.5;margin-bottom:10px">🎁 '+rewardTxt+'</div>'
+    +'<div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px 15px;font-size:12px;color:rgba(255,255,255,.6);line-height:1.55;margin-bottom:16px">💡 <b style="color:rgba(255,255,255,.85)">Comment ça marche :</b> tu gagnes seulement quand une personne s\'abonne pour vrai (paiement confirmé). Les gens qui cliquent ton lien sans s\'abonner comptent pas dans tes gains.</div>'
     +'<div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:18px;margin-bottom:16px">'
     +  '<div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:4px">Ton lien de partage 🔗</div>'
     +  '<div style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:12px;line-height:1.5">Partage-le sur tes réseaux. Chaque personne qui l\'utilise est reliée à toi.</div>'
