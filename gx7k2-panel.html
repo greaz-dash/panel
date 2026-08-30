@@ -262,6 +262,85 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
   .jb-btn{min-width:100%}
   .jb-grid{grid-template-columns:1fr 1fr}
 }
+
+/* ═══════════════════════════════════════════════════════
+   RESPONSIVE MOBILE — expérience fluide sur téléphone
+   pour l'admin, les affiliés (Kristina) et les employés
+   ═══════════════════════════════════════════════════════ */
+
+/* Indicateurs de défilement des onglets (gauche + droite) — desktop ET mobile */
+.tabs-wrap{position:relative}
+.tabs-wrap::before,.tabs-wrap::after{content:'';position:absolute;top:0;bottom:0;width:32px;pointer-events:none;z-index:2;opacity:0;transition:opacity .25s}
+.tabs-wrap::before{left:0;background:linear-gradient(to right,rgba(255,255,255,.98),transparent)}
+.tabs-wrap::after{right:0;background:linear-gradient(to left,rgba(255,255,255,.98),transparent)}
+.tabs-wrap.scroll-left::before{opacity:1}
+.tabs-wrap.scroll-right::after{opacity:1}
+.tabs{scroll-behavior:smooth}
+.tab{scroll-snap-align:center}
+
+@media(max-width:680px){
+  /* En-tête : compact, sur une ligne propre */
+  .header{padding:.6rem .85rem;gap:6px}
+  .header-logo{font-size:1.05rem}
+  .header-right{gap:5px}
+  .header-btn{font-size:11px;padding:6px 10px;border-radius:8px}
+  .header-right .header-date, .header-right .header-email{display:none}
+
+  /* Barre de stats : défilement fluide, sans scrollbar moche */
+  .stats-bar{padding:.6rem .85rem;gap:1rem;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
+  .stats-bar::-webkit-scrollbar{height:0;display:none}
+  .stats-bar{scrollbar-width:none}
+
+  /* Onglets : défilement tactile fluide + zone de touche plus grande */
+  .tabs{padding:0 .85rem;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
+  .tabs::-webkit-scrollbar{height:0;display:none}
+  .tabs{scrollbar-width:none}
+  .tab{padding:14px 14px;font-size:13.5px}
+
+  /* Contenu : marges réduites pour maximiser l'espace */
+  .content{padding:.85rem .85rem}
+
+  /* Barre d'outils : recherche pleine largeur, boutons tactiles */
+  .toolbar{gap:8px}
+  .search-input{min-width:100%;flex:1 1 100%;padding:12px 14px;font-size:16px;border-radius:11px}
+  .tool-btn{padding:11px 14px;font-size:13px;border-radius:10px;flex:1;min-width:auto;text-align:center;justify-content:center}
+  .filter-btn{padding:10px 15px;font-size:13px}
+
+  /* Cartes / listes : boutons d'action empilés pis tactiles */
+  .directory-actions{flex-wrap:wrap;gap:8px}
+  .directory-actions .abtn{flex:1 1 calc(50% - 4px);justify-content:center;padding:12px 10px;font-size:12.5px;border-radius:10px}
+  .abtn{padding:11px 13px;font-size:12.5px}
+
+  /* Grilles d'infos : une ou deux colonnes max */
+  .info-grid{grid-template-columns:1fr 1fr!important}
+  .jb-grid{grid-template-columns:1fr 1fr}
+
+  /* Notifications temps réel : pleine largeur en bas */
+  #notif-container{top:auto;bottom:12px;left:12px;right:12px;max-width:none}
+
+  /* Modals : plein écran mobile, scrollables, boutons tactiles */
+  [id$="-modal"] > div, .modal-card, .team-modal-card{max-width:100%!important;width:calc(100vw - 24px)!important;max-height:88vh!important;overflow-y:auto!important;border-radius:18px!important}
+  [id$="-modal"] input, [id$="-modal"] select, [id$="-modal"] textarea{font-size:16px!important}
+
+  /* Espace affilié : padding confortable */
+  #affiliate-body{padding:0 4px}
+  .login-screen > div{width:100%}
+}
+
+@media(max-width:420px){
+  .header-logo{font-size:.98rem}
+  .header-btn{font-size:10.5px;padding:6px 8px}
+  .tab{padding:13px 12px;font-size:13px}
+  .directory-actions .abtn{flex:1 1 100%}
+  .info-grid{grid-template-columns:1fr!important}
+}
+
+/* Zones tactiles confortables : tout ce qui se clique fait au moins 44px de haut sur mobile */
+@media(hover:none) and (pointer:coarse){
+  .tab, .tool-btn, .filter-btn, .abtn, .header-btn, .jb-btn, button{min-height:44px}
+  /* Feedback tactile : léger enfoncement au toucher */
+  .tab:active, .tool-btn:active, .abtn:active, button:active{transform:scale(.97);transition:transform .1s}
+}
 </style>
 </head>
 <body>
@@ -322,7 +401,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
   </div>
 
   <!-- TABS -->
-  <div class="tabs">
+  <div class="tabs-wrap">
+  <div class="tabs" id="tabsScroll">
     <div class="tab act" id="tab-clients" onclick="switchTab('clients')">🔧 Clients <span class="tbadge" id="tb1">0</span></div>
     <div class="tab" id="tab-membres" onclick="switchTab('membres')">💳 Membres <span class="tbadge" id="tbmembres" style="background:#00C26F">0</span></div>
     <div class="tab" id="tab-mec" onclick="switchTab('mec')">👨‍🔧 Mécaniciens <span class="tbadge blue" id="tb2">0</span></div>
@@ -336,6 +416,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
     <div class="tab" id="tab-partners" onclick="switchTab('partners')">📢 Partenaires <span class="tbadge" id="tbpartners" style="background:#378ADD">0</span></div>
     <div class="tab" id="tab-cities" onclick="switchTab('cities')">🏙️ Villes <span class="tbadge" id="tbcities" style="background:#0EA5E9">0</span></div>
     <div class="tab" id="tab-team" onclick="switchTab('team')" style="display:none">👥 Équipe <span class="tbadge" id="tb7" style="background:#0EA5E9">0</span></div>
+  </div>
   </div>
 
   <!-- CONTENT -->
@@ -1071,12 +1152,36 @@ function switchTab(t){
   document.querySelectorAll(".panel").forEach(function(x){ x.classList.remove("act"); });
   document.getElementById("tab-"+t).classList.add("act");
   document.getElementById("panel-"+t).classList.add("act");
+  // Sur mobile, on centre l'onglet actif dans la vue (fluide)
+  try {
+    var activeTab = document.getElementById("tab-"+t);
+    if(activeTab && activeTab.scrollIntoView){ activeTab.scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'}); }
+  } catch(e){}
   if(t==='clients' || t==='rdv' || t==='claims') clearNotifCount();
   if(t==='jobs') loadJobsAdmin();
   if(t==='partners') loadPartnersAdmin();
   if(t==='crm') buildCRM();
   if(t==='membres') loadMembres();
 }
+
+/* Met à jour les indicateurs de défilement des onglets (dégradés gauche/droite) */
+function updateTabIndicators(){
+  var scroll = document.getElementById('tabsScroll');
+  var wrap = scroll ? scroll.parentElement : null;
+  if(!scroll || !wrap) return;
+  var canLeft = scroll.scrollLeft > 4;
+  var canRight = scroll.scrollLeft < (scroll.scrollWidth - scroll.clientWidth - 4);
+  wrap.classList.toggle('scroll-left', canLeft);
+  wrap.classList.toggle('scroll-right', canRight);
+}
+document.addEventListener('DOMContentLoaded', function(){
+  var scroll = document.getElementById('tabsScroll');
+  if(scroll){
+    scroll.addEventListener('scroll', updateTabIndicators, {passive:true});
+    setTimeout(updateTabIndicators, 300);
+  }
+  window.addEventListener('resize', updateTabIndicators, {passive:true});
+});
 
 /* ══════════════════════════════════════════
    MEMBRES / ABONNEMENTS GREAZ COLLECTION
