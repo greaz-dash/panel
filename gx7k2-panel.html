@@ -1464,8 +1464,10 @@ async function buildCRM(){
     } else {
       // Compte créé directement, sans aucune demande ni RDV — c'est exactement
       // le cas qui manquait avant : maintenant il apparaît quand même ici.
+      // Si le prénom/nom n'a pas été saisi sur le compte, on affiche courriel ou
+      // téléphone plutôt que le mot générique "Client" — au moins c'est identifiable.
       map[key] = {
-        key: key, name: accName || 'Client', email: acc.email||'', phone: acc.phone||'',
+        key: key, name: accName || acc.email || acc.phone || 'Client (nom manquant)', email: acc.email||'', phone: acc.phone||'',
         city: '', vehicle: vehicleStr,
         interactions: [], lastDate: accDate, lastAssigned: '',
         rdvCount: 0, manual: false, hasAccount: true, uid: acc._uid,
@@ -1492,7 +1494,7 @@ async function buildCRM(){
       // Nouveau client purement manuel
       var d = (m.created_at && m.created_at.toDate) ? m.created_at.toDate() : new Date();
       map[mKey || m._manualId] = {
-        key: mKey || m._manualId, name: m.name||'Client', email: m.client_email||'',
+        key: mKey || m._manualId, name: m.name||m.client_email||m.client_phone||'Client (nom manquant)', email: m.client_email||'',
         phone: m.client_phone||'', city: m.city||'', vehicle: m.vehicle||'',
         interactions: [], lastDate: d, lastAssigned: '', rdvCount: 0,
         manual: true, manualId: m._manualId, note: m.note||'',
@@ -1508,7 +1510,8 @@ async function buildCRM(){
 
 function normalizeContact(raw, type){
   var name = ((raw.client_prenom||'')+' '+(raw.client_nom||'')).trim()
-    || raw.client_name || raw.name || 'Client';
+    || raw.client_name || raw.name
+    || (raw.client_email||raw.email) || (raw.client_phone||raw.phone) || 'Client (nom manquant)';
   var vehicle = [raw.vehicle_year, raw.vehicle_make, raw.vehicle_model]
     .filter(Boolean).join(' ')
     || [raw.year, raw.make, raw.model].filter(Boolean).join(' ') || '';
@@ -1635,9 +1638,83 @@ function crmCard(c){
     +"<div class='action-btns' style='margin-top:12px'>"
     +(c.phone?"<a href='tel:"+phoneClean+"' class='abtn abtn-call'>📞 Appeler</a><a href='sms:"+phoneClean+"' class='abtn abtn-sms'>💬 SMS</a>":"")
     +(c.email?"<a href='mailto:"+c.email+"' class='abtn abtn-email'>📧 Courriel</a>":"")
+    +((c.uid||c.manualId)?"<button class='abtn abtn-link' onclick='openEditCrmClient(\""+c.key.replace(/[^a-z0-9]/gi,'')+"\")'>✏️ Modifier</button>":"")
     +(c.manualId?"<button class='abtn abtn-del' onclick='deleteManualClient(\""+c.manualId+"\")'>🗑 Retirer</button>":"")
     +"</div>"
     +"</div></div>";
+}
+
+/* Corrige le nom, téléphone ou adresse d'une fiche directement depuis le Répertoire —
+   pas besoin d'aller dans Firebase Console. Écrit sur le compte (clients/{uid}) si la
+   fiche vient d'un compte Greaz, ou sur la fiche manuelle (clients_crm) sinon. */
+function openEditCrmClient(skey){
+  var c = _crmClients.find(function(x){ return x.key.replace(/[^a-z0-9]/gi,'') === skey; });
+  if(!c){ alert('Client introuvable — rafraîchis le répertoire et réessaie.'); return; }
+  if(!c.uid && !c.manualId){
+    alert('Cette fiche vient uniquement d\'une ancienne demande ou réservation (pas d\'un compte Greaz), donc il n\'y a pas d\'endroit où enregistrer une correction.\n\nSi ce client revient, ses nouvelles infos mettront la fiche à jour automatiquement.');
+    return;
+  }
+  var fld = 'width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit';
+  var lbl = 'font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px';
+  var parts = (c.name||'').trim().split(/\s+/);
+  var prenom = c.uid ? (parts.shift()||'') : '';
+  var nom = c.uid ? parts.join(' ') : '';
+
+  var modal = document.createElement('div');
+  modal.id = 'crm-edit-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(23,26,32,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto';
+  modal.innerHTML = '<div style="background:white;border-radius:18px;padding:1.75rem;max-width:460px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">'
+    +'<h3 style="font-size:17px;font-weight:800;margin-bottom:4px">✏️ Modifier la fiche</h3>'
+    +'<p style="font-size:12.5px;color:#6B7280;margin-bottom:1.25rem">'+(c.uid?'Enregistré directement sur son compte Greaz.':'Fiche ajoutée manuellement.')+'</p>'
+    + (c.uid
+        ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">'
+          +'<div><label style="'+lbl+'">Prénom *</label><input id="ce-prenom" type="text" value="'+String(prenom).replace(/"/g,'&quot;')+'" style="'+fld+'"></div>'
+          +'<div><label style="'+lbl+'">Nom</label><input id="ce-nom" type="text" value="'+String(nom).replace(/"/g,'&quot;')+'" style="'+fld+'"></div>'
+          +'</div>'
+        : '<div style="margin-bottom:12px"><label style="'+lbl+'">Nom complet *</label><input id="ce-name" type="text" value="'+String(c.name||'').replace(/"/g,'&quot;')+'" style="'+fld+'"></div>'
+          +'<div style="margin-bottom:12px"><label style="'+lbl+'">Courriel</label><input id="ce-email" type="email" value="'+String(c.email||'').replace(/"/g,'&quot;')+'" style="'+fld+'"></div>'
+      )
+    +'<div style="margin-bottom:12px"><label style="'+lbl+'">Téléphone</label><input id="ce-phone" type="tel" value="'+String(c.phone||'').replace(/"/g,'&quot;')+'" style="'+fld+'"></div>'
+    +'<div style="margin-bottom:1.25rem"><label style="'+lbl+'">'+(c.uid?'Adresse':'Ville')+'</label><input id="ce-address" type="text" value="'+String(c.address||c.city||'').replace(/"/g,'&quot;')+'" style="'+fld+'"></div>'
+    +'<div id="ce-err" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:9px 12px;border-radius:8px;font-size:12.5px;margin-bottom:1rem"></div>'
+    +'<div style="display:flex;gap:9px">'
+    +'<button id="ce-save-btn" onclick="saveCrmClientEdit(\''+skey+'\')" style="flex:1;padding:13px;background:#0E9F6E;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Enregistrer</button>'
+    +'<button onclick="document.getElementById(\'crm-edit-modal\').remove()" style="padding:13px 18px;background:#F3F4F6;color:#6B7280;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Annuler</button>'
+    +'</div></div>';
+  document.body.appendChild(modal);
+  modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
+  setTimeout(function(){ var f=document.getElementById('ce-prenom')||document.getElementById('ce-name'); if(f) f.focus(); }, 50);
+}
+
+async function saveCrmClientEdit(skey){
+  var c = _crmClients.find(function(x){ return x.key.replace(/[^a-z0-9]/gi,'') === skey; });
+  if(!c) return;
+  var btn = document.getElementById('ce-save-btn');
+  var errEl = document.getElementById('ce-err');
+  var g = function(id){ var e=document.getElementById(id); return e ? e.value.trim() : ''; };
+  function showErr(m){ errEl.textContent=m; errEl.style.display='block'; btn.disabled=false; btn.textContent='💾 Enregistrer'; }
+
+  btn.disabled = true; btn.textContent = '⏳ Enregistrement...';
+  try {
+    if(c.uid){
+      var prenom = g('ce-prenom');
+      if(!prenom){ showErr('Le prénom est obligatoire.'); return; }
+      var nom = g('ce-nom'), phone = g('ce-phone'), address = g('ce-address');
+      await db.collection('clients').doc(c.uid).update({ prenom: prenom, nom: nom, phone: phone, address: address });
+      c.name = (prenom+' '+nom).trim();
+      c.phone = phone; c.address = address;
+    } else if(c.manualId){
+      var name = g('ce-name');
+      if(!name){ showErr('Le nom est obligatoire.'); return; }
+      var email = g('ce-email'), phone2 = g('ce-phone'), city = g('ce-address');
+      await db.collection('clients_crm').doc(c.manualId).update({ name: name, client_email: email, client_phone: phone2, city: city });
+      c.name = name; c.email = email; c.phone = phone2; c.city = city;
+    }
+    document.getElementById('crm-edit-modal').remove();
+    renderCRM();
+  } catch(e){
+    showErr('Erreur : '+e.message);
+  }
 }
 
 
