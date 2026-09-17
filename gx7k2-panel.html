@@ -490,6 +490,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
         <button class="filter-btn act" id="crmf-all" onclick="crmSort('recent',this)">🕐 Plus récents</button>
         <button class="filter-btn" id="crmf-name" onclick="crmSort('name',this)">🔤 Nom (A-Z)</button>
         <button class="filter-btn" id="crmf-most" onclick="crmSort('most',this)">🔁 Plus de RDV</button>
+        <button class="filter-btn" id="crmf-norsvp" onclick="crmSort('norrdv',this)">⚡ Inscrits sans RDV</button>
       </div>
       <div id="crm-stats" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1rem"></div>
       <div id="crm-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
@@ -1378,8 +1379,9 @@ async function buildCRM(){
   var listEl = document.getElementById('crm-list');
   listEl.innerHTML = '<div class="loading"><span class="spinner"></span>Assemblage du répertoire...</div>';
 
-  // On s'assure d'avoir les données (réservations + leads + clients manuels)
+  // On s'assure d'avoir les données (réservations + leads + comptes clients + clients manuels)
   var manualClients = [];
+  var accountClients = [];
   try {
     if(!_rdvs || !_rdvs.length){
       var rSnap = await db.collection('appointments').get();
@@ -1389,6 +1391,10 @@ async function buildCRM(){
       var lSnap = await db.collection('leads').get();
       _leads = lSnap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
     }
+    // Comptes créés directement sur le site (avec ou sans RDV/demande) — c'est ce qui
+    // permet de voir un client qui s'est juste inscrit, sans jamais avoir réservé.
+    var accSnap = await db.collection('clients').get();
+    accountClients = accSnap.docs.map(function(d){ return Object.assign({_uid:d.id}, d.data()); });
     // Clients ajoutés manuellement
     var cSnap = await db.collection('clients_crm').get();
     manualClients = cSnap.docs.map(function(d){ return Object.assign({id:d.id, _manualId:d.id}, d.data()); });
@@ -1432,6 +1438,42 @@ async function buildCRM(){
     if(!c.phone && item.phone) c.phone = item.phone;
     if(!c.city && item.city) c.city = item.city;
     if(!c.vehicle && item.vehicle) c.vehicle = item.vehicle;
+  });
+
+  // Intégrer les comptes créés sur le site (clients/{uid}) — inclut ceux qui n'ont
+  // JAMAIS pris de RDV ni fait de demande : sans ça, ils n'apparaissent nulle part.
+  accountClients.forEach(function(acc){
+    var key = crmKey(acc) || acc._uid;
+    if(!key) return;
+    var v0 = (acc.vehicles||[])[0] || {};
+    var vehicleStr = [v0.year, v0.make, v0.model].filter(Boolean).join(' ');
+    var accName = [acc.prenom, acc.nom].filter(Boolean).join(' ');
+    var accDate = (acc.created_at && acc.created_at.toDate) ? acc.created_at.toDate() : new Date(0);
+    if(map[key]){
+      var c = map[key];
+      c.hasAccount = true; c.uid = acc._uid;
+      if(!c.email && acc.email) c.email = acc.email;
+      if(!c.phone && acc.phone) c.phone = acc.phone;
+      if(accName) c.name = accName; // le nom du compte prime sur celui d'une vieille demande
+      if(acc.address) c.address = acc.address;
+      if(acc.birthdate) c.birthdate = acc.birthdate;
+      if(acc.insurer) c.insurer = acc.insurer;
+      if(acc.insurer_since) c.insurer_since = acc.insurer_since;
+      if(v0.financed) c.financed = v0.financed;
+      if(!c.vehicle && vehicleStr) c.vehicle = vehicleStr;
+    } else {
+      // Compte créé directement, sans aucune demande ni RDV — c'est exactement
+      // le cas qui manquait avant : maintenant il apparaît quand même ici.
+      map[key] = {
+        key: key, name: accName || 'Client', email: acc.email||'', phone: acc.phone||'',
+        city: '', vehicle: vehicleStr,
+        interactions: [], lastDate: accDate, lastAssigned: '',
+        rdvCount: 0, manual: false, hasAccount: true, uid: acc._uid,
+        address: acc.address||'', birthdate: acc.birthdate||'',
+        insurer: acc.insurer||'', insurer_since: acc.insurer_since||'',
+        financed: v0.financed||'',
+      };
+    }
   });
 
   // Intégrer les clients manuels (fusionnés si même courriel/téléphone, sinon nouveaux)
@@ -1489,11 +1531,13 @@ function renderCRMStats(){
   var total = _crmClients.length;
   var withRdv = _crmClients.filter(function(c){ return c.rdvCount>0; }).length;
   var repeat = _crmClients.filter(function(c){ return c.rdvCount>1; }).length;
+  var noRdvAccounts = _crmClients.filter(function(c){ return c.hasAccount && c.rdvCount===0; }).length;
   var el = document.getElementById('crm-stats');
   function stat(n,l,color){ return '<div style="flex:1;min-width:120px;background:white;border:1px solid var(--border);border-radius:12px;padding:12px 14px"><div style="font-size:22px;font-weight:800;letter-spacing:-.02em;color:'+color+'">'+n+'</div><div style="font-size:11.5px;color:var(--muted);margin-top:2px">'+l+'</div></div>'; }
   el.innerHTML = stat(total,'Clients au total','#0E9F6E')
     + stat(withRdv,'Avec réservation','#3E6AE1')
-    + stat(repeat,'Clients fidèles (2+ RDV)','#8B5CF6');
+    + stat(repeat,'Clients fidèles (2+ RDV)','#8B5CF6')
+    + stat(noRdvAccounts,'Inscrits, aucun RDV','#D97706');
 }
 
 function crmSort(mode, btn){
@@ -1514,8 +1558,15 @@ function renderCRM(){
         || (c.email||'').toLowerCase().indexOf(q)!==-1
         || (c.phone||'').toLowerCase().indexOf(q)!==-1
         || (c.city||'').toLowerCase().indexOf(q)!==-1
+        || (c.address||'').toLowerCase().indexOf(q)!==-1
+        || (c.insurer||'').toLowerCase().indexOf(q)!==-1
         || (c.vehicle||'').toLowerCase().indexOf(q)!==-1;
     });
+  }
+
+  // Filtre "inscrits sans RDV" : les comptes créés directement, jamais réservé
+  if(_crmSort === 'norrdv'){
+    list = list.filter(function(c){ return c.hasAccount && c.rdvCount===0; });
   }
 
   // Tri
@@ -1529,7 +1580,7 @@ function renderCRM(){
 
   var el = document.getElementById('crm-list');
   if(list.length === 0){
-    el.innerHTML = '<div style="text-align:center;padding:3rem;color:var(--muted)"><div style="font-size:2.5rem;margin-bottom:.5rem">👤</div>'+(q?'Aucun client trouvé.':'Aucun client pour l\'instant.')+'</div>';
+    el.innerHTML = '<div style="text-align:center;padding:3rem;color:var(--muted)"><div style="font-size:2.5rem;margin-bottom:.5rem">👤</div>'+(q?'Aucun client trouvé.':(_crmSort==='norrdv'?'Aucun compte inscrit sans RDV pour l\'instant. 🎉':'Aucun client pour l\'instant.'))+'</div>';
     return;
   }
 
@@ -1546,8 +1597,12 @@ function crmCard(c){
     +"<div class='card-top' onclick='toggleCard(\""+c.key.replace(/[^a-z0-9]/gi,'')+"\")'>"
     +"<div class='card-main' style='display:flex;align-items:center;gap:12px'>"
     +"<div style='width:42px;height:42px;border-radius:50%;background:#E6F6EF;color:#0B7D57;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex-shrink:0'>"+ini+"</div>"
-    +"<div><div class='card-name'>"+c.name+(c.manual?" <span style='font-size:10px;font-weight:700;color:#0B7D57;background:#E6F6EF;padding:1px 7px;border-radius:8px;vertical-align:middle'>✎ ajouté</span>":"")+"</div>"
-    +"<div class='card-meta'><span>"+(c.vehicle||'Véhicule non précisé')+"</span>"+(c.city?"<span>· 📍 "+c.city+"</span>":"")+"</div></div>"
+    +"<div><div class='card-name'>"+c.name
+    +(c.manual?" <span style='font-size:10px;font-weight:700;color:#0B7D57;background:#E6F6EF;padding:1px 7px;border-radius:8px;vertical-align:middle'>✎ ajouté</span>":"")
+    +(c.hasAccount?" <span style='font-size:10px;font-weight:700;color:#0F2ACC;background:#EEF1FF;padding:1px 7px;border-radius:8px;vertical-align:middle'>✅ Compte Greaz</span>":"")
+    +(c.hasAccount && c.rdvCount===0?" <span style='font-size:10px;font-weight:700;color:#92400E;background:#FEF3C7;padding:1px 7px;border-radius:8px;vertical-align:middle'>⚡ Inscrit, aucun RDV</span>":"")
+    +"</div>"
+    +"<div class='card-meta'><span>"+(c.vehicle||'Véhicule non précisé')+"</span>"+((c.city||c.address)?"<span>· 📍 "+(c.address||c.city)+"</span>":"")+"</div></div>"
     +"</div>"
     +"<div class='card-right'><span class='sbadge' style='background:#E6F6EF;color:#0B7D57'>"+c.rdvCount+" RDV</span></div>"
     +"</div>"
@@ -1556,8 +1611,11 @@ function crmCard(c){
     +"<div class='info-grid'>"
     +"<div class='info-item'><div class='il'>Courriel</div><div class='iv'>"+(c.email?"<a href='mailto:"+c.email+"'>"+c.email+"</a>":"—")+"</div></div>"
     +"<div class='info-item'><div class='il'>Téléphone</div><div class='iv'>"+(c.phone?"<a href='tel:"+phoneClean+"'>"+c.phone+"</a>":"—")+"</div></div>"
-    +"<div class='info-item'><div class='il'>Ville</div><div class='iv'>"+(c.city||"—")+"</div></div>"
+    +"<div class='info-item'><div class='il'>Adresse</div><div class='iv'>"+(c.address||c.city||"—")+"</div></div>"
     +"<div class='info-item'><div class='il'>Véhicule</div><div class='iv'>"+(c.vehicle||"—")+"</div></div>"
+    +(c.birthdate?"<div class='info-item'><div class='il'>Naissance</div><div class='iv'>"+c.birthdate+"</div></div>":"")
+    +(c.insurer?"<div class='info-item'><div class='il'>Assureur</div><div class='iv'>"+c.insurer+(c.insurer_since?' · '+c.insurer_since:'')+"</div></div>":"")
+    +(c.financed?"<div class='info-item'><div class='il'>Financement auto</div><div class='iv'>"+c.financed+"</div></div>":"")
     +"<div class='info-item'><div class='il'>Dernier RDV</div><div class='iv'>"+dateStr+"</div></div>"
     +"<div class='info-item'><div class='il'>Dernier pro assigné</div><div class='iv'>"+(c.lastAssigned||"—")+"</div></div>"
     +"</div>"
@@ -1731,6 +1789,9 @@ function leadCard(l){
     +"<div class='info-item'><div class='il'>Courriel</div><div class='iv'><a href='mailto:"+l.client_email+"'>"+(l.client_email||"—")+"</a></div></div>"
     +"<div class='info-item'><div class='il'>Adresse</div><div class='iv'>"+(l.address||"—")+"</div></div>"
     +"<div class='info-item'><div class='il'>Véhicule</div><div class='iv'>"+(vehicle||"—")+"</div></div>"
+    +(l.client_birthdate?"<div class='info-item'><div class='il'>Naissance</div><div class='iv'>"+l.client_birthdate+"</div></div>":"")
+    +(l.client_insurer?"<div class='info-item'><div class='il'>Assureur</div><div class='iv'>"+l.client_insurer+(l.client_insurer_since?' · '+l.client_insurer_since:'')+"</div></div>":"")
+    +(l.vehicle_financed?"<div class='info-item'><div class='il'>Financement auto</div><div class='iv'>"+l.vehicle_financed+"</div></div>":"")
     +"<div class='info-item'><div class='il'>Problème</div><div class='iv'>"+(l.problem||"—")+"</div></div>"
     +"<div class='info-item'><div class='il'>Urgence</div><div class='iv'>"+(l.urgency||"—")+"</div></div>"
     +"<div class='info-item'><div class='il'>Contact</div><div class='iv'>"+contact+"</div></div>"
@@ -1950,6 +2011,9 @@ function rdvCard(a){
     +"<div class='info-item'><div class='il'>Plage horaire</div><div class='iv'>"+(SLOT_LABELS[a.time_slot]||a.time_slot||"—")+"</div></div>"
     +"<div class='info-item'><div class='il'>Problème</div><div class='iv'>"+(a.problem||"—")+"</div></div>"
     +(a.client_address ? "<div class='info-item'><div class='il'>Adresse</div><div class='iv'>"+a.client_address+"</div></div>" : "")
+    +(a.client_birthdate?"<div class='info-item'><div class='il'>Naissance</div><div class='iv'>"+a.client_birthdate+"</div></div>":"")
+    +(a.client_insurer?"<div class='info-item'><div class='il'>Assureur</div><div class='iv'>"+a.client_insurer+(a.client_insurer_since?' · '+a.client_insurer_since:'')+"</div></div>":"")
+    +(a.vehicle_financed?"<div class='info-item'><div class='il'>Financement auto</div><div class='iv'>"+a.vehicle_financed+"</div></div>":"")
     +"<div class='info-item'><div class='il'>Code</div><div class='iv' style='color:var(--blue);font-weight:700'>"+(a.booking_code||"—")+"</div></div>"
     +(a.description ? "<div class='info-item' style='grid-column:1/-1'><div class='il'>Description</div><div class='iv'>"+a.description+"</div></div>" : "")
     +"<div class='info-item'><div class='il'>Reçu le</div><div class='iv'>"+dt+"</div></div>"
