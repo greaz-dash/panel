@@ -1742,6 +1742,56 @@ var _dossierVehicle = '';
 var DLBL = 'font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px';
 var DFLD = 'width:100%;padding:9px 11px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13.5px;font-family:inherit;box-sizing:border-box';
 
+/* Mêmes clés/étiquettes que le vérificateur de prix du site (BAREME_PRIX
+   dans greaz-site.html) — c'est ce qui permet à un prix entré ici de
+   nourrir automatiquement "X prix réels" affiché aux usagers. */
+var SERVICE_TYPES = {
+  vidange:       "🛢️ Changement d'huile",
+  freins_av:     "🛑 Freins (avant)",
+  freins_ar:     "🛑 Freins (arrière)",
+  freins_full:   "🛑 Freins (4 roues)",
+  pneus_pose:    "🛞 Pose / balancement pneus",
+  pneus_achat:   "🛞 Achat 4 pneus (pose incl.)",
+  batterie:      "🔋 Batterie",
+  demarreur:     "🔌 Démarreur",
+  alternateur:   "⚡ Alternateur",
+  climatisation: "❄️ Climatisation (recharge/répar.)",
+  suspension:    "🔧 Suspension (par côté)",
+  echappement:   "💨 Échappement / silencieux",
+  courroie:      "⚙️ Courroie de distribution",
+  transmission:  "⚙️ Transmission (répar. majeure)",
+  moteur:        "🔩 Moteur (répar. majeure)",
+  diagnostic:    "🔍 Diagnostic électronique",
+  inspection:    "📋 Inspection",
+  antirouille:   "🛡️ Traitement antirouille",
+  pare_brise:    "🪟 Pare-brise",
+  amortisseurs:  "🔧 Amortisseurs (paire)",
+  radiateur:     "🌡️ Radiateur",
+  bougies:       "🔥 Bougies d'allumage",
+};
+
+function dossierMecOptions(){
+  var list = (_directory||[]).slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+  return '<option value="">— Aucun / pas encore assigné —</option>'
+    + list.map(function(m){ return '<option value="'+m.id+'">'+(m.type==='garage'?'🏪 ':'🔧 ')+(m.name||'—')+(m.city?' · '+m.city:'')+'</option>'; }).join('');
+}
+
+function dossierServiceOptions(){
+  var html = '<option value="">— Autre / non listé —</option>';
+  for(var k in SERVICE_TYPES){ html += '<option value="'+k+'">'+SERVICE_TYPES[k]+'</option>'; }
+  return html;
+}
+
+/* Quand on choisit un mécanicien dans la liste, on pré-remplit le lieu
+   du RV avec son adresse (modifiable ensuite). */
+function dossierOnMecChange(){
+  var sel = document.getElementById('d-mec');
+  var locEl = document.getElementById('d-location');
+  if(!sel || !locEl) return;
+  var m = (_directory||[]).find(function(x){ return x.id === sel.value; });
+  if(m){ locEl.value = m.address || m.city || ''; }
+}
+
 function openClientDossier(skey){
   var c = _crmClients.find(function(x){ return x.key.replace(/[^a-z0-9]/gi,'') === skey; });
   if(!c || !c.uid){ alert('Le dossier d\'entretien n\'est disponible que pour les clients avec un compte Greaz (pour qu\'il puisse le voir dans son espace).'); return; }
@@ -1751,21 +1801,34 @@ function openClientDossier(skey){
   var modal = document.createElement('div');
   modal.id = 'dossier-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(23,26,32,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto';
-  modal.innerHTML = '<div style="background:white;border-radius:18px;padding:1.75rem;max-width:520px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">'
+  modal.innerHTML = '<div style="background:white;border-radius:18px;padding:1.75rem;max-width:560px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">'
     +'<h3 style="font-size:17px;font-weight:800;margin-bottom:2px">📋 Dossier — '+c.name+'</h3>'
     +'<p style="font-size:12.5px;color:#6B7280;margin-bottom:1.1rem">'+(c.vehicle||'Véhicule non précisé')+' · Ce que tu ajoutes ici, il le voit dans son espace Greaz</p>'
     +'<div id="dossier-stat" style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:10px 13px;font-size:13px;color:#15803D;font-weight:700;margin-bottom:1.1rem">⏳ Chargement...</div>'
     +'<div style="border-top:1px solid #F3F4F6;padding-top:1rem;margin-bottom:1rem">'
-    +'<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7280;margin-bottom:8px">➕ Ajouter un entretien</div>'
+    +'<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7280;margin-bottom:8px">➕ Ajouter un entretien / RV</div>'
+
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'
-    +'<div><label style="'+DLBL+'">Date</label><input id="d-date" type="date" style="'+DFLD+'" value="'+new Date().toISOString().slice(0,10)+'"></div>'
-    +'<div><label style="'+DLBL+'">Titre *</label><input id="d-title" type="text" placeholder="Vidange d\'huile" style="'+DFLD+'"></div>'
+    +'<div><label style="'+DLBL+'">Date du RV</label><input id="d-date" type="date" style="'+DFLD+'" value="'+new Date().toISOString().slice(0,10)+'"></div>'
+    +'<div><label style="'+DLBL+'">Heure du RV</label><input id="d-time" type="time" style="'+DFLD+'"></div>'
     +'</div>'
+
+    +'<div style="margin-bottom:10px"><label style="'+DLBL+'">Mécanicien / garage assigné</label><select id="d-mec" onchange="dossierOnMecChange()" style="'+DFLD+'">'+dossierMecOptions()+'</select></div>'
+    +'<div style="margin-bottom:10px"><label style="'+DLBL+'">Lieu du RV</label><input id="d-location" type="text" placeholder="Adresse ou nom du garage" style="'+DFLD+'"></div>'
+
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'
+    +'<div><label style="'+DLBL+'">Type de service</label><select id="d-service" onchange="dossierOnServiceChange()" style="'+DFLD+'">'+dossierServiceOptions()+'</select></div>'
+    +'<div><label style="'+DLBL+'">Titre / détails *</label><input id="d-title" type="text" placeholder="Vidange d\'huile" style="'+DFLD+'"></div>'
+    +'</div>'
+
+    +'<div style="margin-bottom:10px"><label style="'+DLBL+'">Raison / commentaire</label><textarea id="d-note" rows="2" placeholder="Raison du RV, ce qui a été fait, notes..." style="'+DFLD+';resize:vertical"></textarea></div>'
+
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'
     +'<div><label style="'+DLBL+'">Coût payé ($)</label><input id="d-cost" type="number" min="0" step="0.01" style="'+DFLD+'"></div>'
     +'<div><label style="'+DLBL+'">Économisé grâce à Greaz ($)</label><input id="d-saved" type="number" min="0" step="0.01" style="'+DFLD+'"></div>'
     +'</div>'
-    +'<div style="margin-bottom:10px"><label style="'+DLBL+'">Commentaire</label><textarea id="d-note" rows="2" style="'+DFLD+';resize:vertical"></textarea></div>'
+    +'<div id="d-price-hint" style="display:none;font-size:11px;color:#0F2ACC;background:#EEF1FF;border-radius:7px;padding:6px 9px;margin-bottom:10px">💡 Ce prix va aussi nourrir la base de prix réels affichée aux usagers pour ce type de service.</div>'
+
     +'<div style="margin-bottom:1rem"><label style="'+DLBL+'">Prochain entretien prévu (optionnel — il le voit dans son calendrier)</label><input id="d-next" type="date" style="'+DFLD+'"></div>'
     +'<div id="d-err" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:9px 12px;border-radius:8px;font-size:12.5px;margin-bottom:.75rem"></div>'
     +'<button id="d-save-btn" onclick="saveDossierRecord()" style="width:100%;padding:12px;background:#0E9F6E;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Ajouter au dossier</button>'
@@ -1776,7 +1839,19 @@ function openClientDossier(skey){
     +'</div>';
   document.body.appendChild(modal);
   modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
+  dossierOnServiceChange();
   loadDossierRecords();
+}
+
+function dossierOnServiceChange(){
+  var sel = document.getElementById('d-service');
+  var hint = document.getElementById('d-price-hint');
+  var titleEl = document.getElementById('d-title');
+  if(!sel) return;
+  if(hint) hint.style.display = sel.value ? 'block' : 'none';
+  if(sel.value && titleEl && !titleEl.value.trim()){
+    titleEl.value = (SERVICE_TYPES[sel.value]||'').replace(/^[^\s]+\s/,'');
+  }
 }
 
 function loadDossierRecords(){
@@ -1805,9 +1880,10 @@ function renderDossierList(records){
     var dateStr = r.date ? new Date(r.date+'T12:00:00').toLocaleDateString('fr-CA',{day:'numeric',month:'short',year:'numeric'}) : '—';
     return '<div style="background:#FAFAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;margin-bottom:8px">'
       +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
-      +'<div><b style="font-size:13px">'+(r.title||'Entretien')+'</b><div style="font-size:11px;color:#6B7280;margin-top:1px">'+dateStr+'</div></div>'
+      +'<div><b style="font-size:13px">'+(r.title||'Entretien')+'</b><div style="font-size:11px;color:#6B7280;margin-top:1px">'+dateStr+(r.time?' à '+r.time:'')+'</div></div>'
       +'<button onclick="deleteDossierRecord(\''+r.id+'\')" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:13px;flex-shrink:0">🗑</button>'
       +'</div>'
+      + ((r.mechanic_name||r.location) ? '<div style="font-size:11.5px;color:#6B7280;margin-top:4px">'+(r.mechanic_name?'🔧 '+r.mechanic_name:'')+(r.mechanic_name&&r.location?' · ':'')+(r.location?'📍 '+r.location:'')+'</div>' : '')
       + (r.note ? '<div style="font-size:12px;color:#374151;margin-top:6px">'+r.note+'</div>' : '')
       + '<div style="display:flex;gap:12px;margin-top:6px;font-size:11.5px;color:#6B7280;flex-wrap:wrap">'
       + (r.cost ? '<span>Payé : <b>'+Number(r.cost).toLocaleString('fr-CA',{style:'currency',currency:'CAD'})+'</b></span>' : '')
@@ -1823,6 +1899,12 @@ function saveDossierRecord(){
   var btn = document.getElementById('d-save-btn');
   var errEl = document.getElementById('d-err');
   var date = document.getElementById('d-date').value;
+  var time = document.getElementById('d-time').value;
+  var mecId = document.getElementById('d-mec').value;
+  var mecOpt = document.getElementById('d-mec').selectedOptions[0];
+  var mecName = mecId ? (mecOpt ? mecOpt.textContent.replace(/^[^\s]+\s/,'') : '') : '';
+  var location = document.getElementById('d-location').value.trim();
+  var serviceType = document.getElementById('d-service').value;
   var title = document.getElementById('d-title').value.trim();
   var cost = document.getElementById('d-cost').value;
   var saved = document.getElementById('d-saved').value;
@@ -1833,18 +1915,39 @@ function saveDossierRecord(){
   }
   errEl.style.display = 'none';
   btn.disabled = true; btn.textContent = '⏳ Enregistrement...';
+  var costNum = cost ? Number(cost) : 0;
   db.collection('service_history').add({
     client_uid: _dossierUid,
     vehicle_label: _dossierVehicle,
-    date: date, title: title,
-    cost: cost ? Number(cost) : 0,
+    date: date, time: time || '',
+    mechanic_id: mecId || '', mechanic_name: mecName || '',
+    location: location,
+    service_type: serviceType || '',
+    title: title,
+    cost: costNum,
     saved: saved ? Number(saved) : 0,
     note: note,
     next_due_date: next || '',
     created_by: (currentAdmin && currentAdmin.email) || '',
     created_at: firebase.firestore.FieldValue.serverTimestamp()
   }).then(function(){
-    ['d-title','d-cost','d-saved','d-note','d-next'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
+    // Le prix entré ici nourrit aussi la base de "vrais prix" du vérificateur
+    // de prix du site (même collection, mêmes clés que BAREME_PRIX).
+    if(serviceType && costNum > 0){
+      db.collection('price_checks').add({
+        repair: serviceType,
+        repair_label: (SERVICE_TYPES[serviceType]||'').replace(/^[^\s]+\s/,''),
+        price: costNum,
+        city: location || null,
+        source: 'greaz_verified',
+        client_uid: _dossierUid,
+        created_at: firebase.firestore.FieldValue.serverTimestamp()
+      }).catch(function(e){ console.log('price_checks non alimenté:', e.message); });
+    }
+    ['d-title','d-cost','d-saved','d-note','d-next','d-time','d-location'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
+    document.getElementById('d-service').value = '';
+    document.getElementById('d-mec').value = '';
+    dossierOnServiceChange();
     btn.disabled = false; btn.textContent = '💾 Ajouter au dossier';
     loadDossierRecords();
   }).catch(function(e){
