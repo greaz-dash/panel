@@ -1654,6 +1654,7 @@ function crmCard(c){
     +(c.phone?"<a href='tel:"+phoneClean+"' class='abtn abtn-call'>📞 Appeler</a><a href='sms:"+phoneClean+"' class='abtn abtn-sms'>💬 SMS</a>":"")
     +(c.email?"<a href='mailto:"+c.email+"' class='abtn abtn-email'>📧 Courriel</a>":"")
     +((c.uid||c.manualId)?"<button class='abtn abtn-link' onclick='openEditCrmClient(\""+c.key.replace(/[^a-z0-9]/gi,'')+"\")'>✏️ Modifier</button>":"")
+    +(c.uid?"<button class='abtn' style='background:#FFFBEB;border-color:#FCD34D;color:#B45309' onclick='openClientDossier(\""+c.key.replace(/[^a-z0-9]/gi,'')+"\")'>📋 Dossier</button>":"")
     +(c.manualId?"<button class='abtn abtn-del' onclick='deleteManualClient(\""+c.manualId+"\")'>🗑 Retirer</button>":"")
     +"</div>"
     +"</div></div>";
@@ -1732,6 +1733,132 @@ async function saveCrmClientEdit(skey){
   }
 }
 
+/* ══════════ DOSSIER CLIENT — historique d'entretien réel ══════════
+   Ce qu'on enregistre ici (date, ce qui a été fait, coût, économies
+   grâce à Greaz) apparaît directement dans l'espace du client sur le
+   site — c'est nous (garage/admin) qui l'alimentons après chaque RDV. */
+var _dossierUid = null;
+var _dossierVehicle = '';
+var DLBL = 'font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px';
+var DFLD = 'width:100%;padding:9px 11px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13.5px;font-family:inherit;box-sizing:border-box';
+
+function openClientDossier(skey){
+  var c = _crmClients.find(function(x){ return x.key.replace(/[^a-z0-9]/gi,'') === skey; });
+  if(!c || !c.uid){ alert('Le dossier d\'entretien n\'est disponible que pour les clients avec un compte Greaz (pour qu\'il puisse le voir dans son espace).'); return; }
+  _dossierUid = c.uid;
+  _dossierVehicle = c.vehicle || '';
+
+  var modal = document.createElement('div');
+  modal.id = 'dossier-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(23,26,32,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto';
+  modal.innerHTML = '<div style="background:white;border-radius:18px;padding:1.75rem;max-width:520px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">'
+    +'<h3 style="font-size:17px;font-weight:800;margin-bottom:2px">📋 Dossier — '+c.name+'</h3>'
+    +'<p style="font-size:12.5px;color:#6B7280;margin-bottom:1.1rem">'+(c.vehicle||'Véhicule non précisé')+' · Ce que tu ajoutes ici, il le voit dans son espace Greaz</p>'
+    +'<div id="dossier-stat" style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:10px 13px;font-size:13px;color:#15803D;font-weight:700;margin-bottom:1.1rem">⏳ Chargement...</div>'
+    +'<div style="border-top:1px solid #F3F4F6;padding-top:1rem;margin-bottom:1rem">'
+    +'<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7280;margin-bottom:8px">➕ Ajouter un entretien</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'
+    +'<div><label style="'+DLBL+'">Date</label><input id="d-date" type="date" style="'+DFLD+'" value="'+new Date().toISOString().slice(0,10)+'"></div>'
+    +'<div><label style="'+DLBL+'">Titre *</label><input id="d-title" type="text" placeholder="Vidange d\'huile" style="'+DFLD+'"></div>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'
+    +'<div><label style="'+DLBL+'">Coût payé ($)</label><input id="d-cost" type="number" min="0" step="0.01" style="'+DFLD+'"></div>'
+    +'<div><label style="'+DLBL+'">Économisé grâce à Greaz ($)</label><input id="d-saved" type="number" min="0" step="0.01" style="'+DFLD+'"></div>'
+    +'</div>'
+    +'<div style="margin-bottom:10px"><label style="'+DLBL+'">Commentaire</label><textarea id="d-note" rows="2" style="'+DFLD+';resize:vertical"></textarea></div>'
+    +'<div style="margin-bottom:1rem"><label style="'+DLBL+'">Prochain entretien prévu (optionnel — il le voit dans son calendrier)</label><input id="d-next" type="date" style="'+DFLD+'"></div>'
+    +'<div id="d-err" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:9px 12px;border-radius:8px;font-size:12.5px;margin-bottom:.75rem"></div>'
+    +'<button id="d-save-btn" onclick="saveDossierRecord()" style="width:100%;padding:12px;background:#0E9F6E;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Ajouter au dossier</button>'
+    +'</div>'
+    +'<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7280;margin-bottom:8px">🕓 Historique</div>'
+    +'<div id="dossier-list">Chargement...</div>'
+    +'<button onclick="document.getElementById(\'dossier-modal\').remove()" style="width:100%;margin-top:1rem;padding:11px;background:#F3F4F6;color:#6B7280;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Fermer</button>'
+    +'</div>';
+  document.body.appendChild(modal);
+  modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
+  loadDossierRecords();
+}
+
+function loadDossierRecords(){
+  if(!_dossierUid) return;
+  db.collection('service_history').where('client_uid','==',_dossierUid).get().then(function(snap){
+    var records = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    records.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+    renderDossierList(records);
+  }).catch(function(e){
+    var listEl = document.getElementById('dossier-list');
+    if(listEl) listEl.innerHTML = '<div style="color:#dc2626;font-size:12.5px">Erreur : '+e.message+'</div>';
+  });
+}
+
+function renderDossierList(records){
+  var statEl = document.getElementById('dossier-stat');
+  var listEl = document.getElementById('dossier-list');
+  if(!listEl) return;
+  var totalSaved = records.reduce(function(s,r){ return s + (Number(r.saved)||0); }, 0);
+  if(statEl) statEl.textContent = '💰 '+totalSaved.toLocaleString('fr-CA',{style:'currency',currency:'CAD'})+' économisés grâce à Greaz sur '+records.length+' entretien'+(records.length>1?'s':'');
+  if(!records.length){
+    listEl.innerHTML = '<div style="text-align:center;padding:1.5rem;color:#9CA3AF;font-size:12.5px">Aucun entretien enregistré pour l\'instant.</div>';
+    return;
+  }
+  listEl.innerHTML = records.map(function(r){
+    var dateStr = r.date ? new Date(r.date+'T12:00:00').toLocaleDateString('fr-CA',{day:'numeric',month:'short',year:'numeric'}) : '—';
+    return '<div style="background:#FAFAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;margin-bottom:8px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+      +'<div><b style="font-size:13px">'+(r.title||'Entretien')+'</b><div style="font-size:11px;color:#6B7280;margin-top:1px">'+dateStr+'</div></div>'
+      +'<button onclick="deleteDossierRecord(\''+r.id+'\')" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:13px;flex-shrink:0">🗑</button>'
+      +'</div>'
+      + (r.note ? '<div style="font-size:12px;color:#374151;margin-top:6px">'+r.note+'</div>' : '')
+      + '<div style="display:flex;gap:12px;margin-top:6px;font-size:11.5px;color:#6B7280;flex-wrap:wrap">'
+      + (r.cost ? '<span>Payé : <b>'+Number(r.cost).toLocaleString('fr-CA',{style:'currency',currency:'CAD'})+'</b></span>' : '')
+      + (r.saved ? '<span style="color:#15803D">Économisé : <b>'+Number(r.saved).toLocaleString('fr-CA',{style:'currency',currency:'CAD'})+'</b></span>' : '')
+      + (r.next_due_date ? '<span style="color:#B45309">Prochain : <b>'+r.next_due_date+'</b></span>' : '')
+      + '</div>'
+      +'</div>';
+  }).join('');
+}
+
+function saveDossierRecord(){
+  if(!_dossierUid) return;
+  var btn = document.getElementById('d-save-btn');
+  var errEl = document.getElementById('d-err');
+  var date = document.getElementById('d-date').value;
+  var title = document.getElementById('d-title').value.trim();
+  var cost = document.getElementById('d-cost').value;
+  var saved = document.getElementById('d-saved').value;
+  var note = document.getElementById('d-note').value.trim();
+  var next = document.getElementById('d-next').value;
+  if(!date || !title){
+    errEl.textContent = 'La date et le titre sont obligatoires.'; errEl.style.display = 'block'; return;
+  }
+  errEl.style.display = 'none';
+  btn.disabled = true; btn.textContent = '⏳ Enregistrement...';
+  db.collection('service_history').add({
+    client_uid: _dossierUid,
+    vehicle_label: _dossierVehicle,
+    date: date, title: title,
+    cost: cost ? Number(cost) : 0,
+    saved: saved ? Number(saved) : 0,
+    note: note,
+    next_due_date: next || '',
+    created_by: (currentAdmin && currentAdmin.email) || '',
+    created_at: firebase.firestore.FieldValue.serverTimestamp()
+  }).then(function(){
+    ['d-title','d-cost','d-saved','d-note','d-next'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
+    btn.disabled = false; btn.textContent = '💾 Ajouter au dossier';
+    loadDossierRecords();
+  }).catch(function(e){
+    errEl.textContent = 'Erreur : '+e.message; errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = '💾 Ajouter au dossier';
+  });
+}
+
+function deleteDossierRecord(id){
+  if(!confirm('Supprimer cet entretien du dossier ?')) return;
+  db.collection('service_history').doc(id).delete().then(function(){
+    loadDossierRecords();
+  }).catch(function(e){ alert('Erreur : '+e.message); });
+}
 
 /* ══════════ AJOUT MANUEL D'UN CLIENT ══════════ */
 function openNewClientModal(){
