@@ -1770,10 +1770,31 @@ var SERVICE_TYPES = {
   bougies:       "🔥 Bougies d'allumage",
 };
 
-function dossierMecOptions(){
+function dossierMecOptions(filterText){
+  var q = (filterText||'').trim().toLowerCase();
   var list = (_directory||[]).slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
-  return '<option value="">— Aucun / pas encore assigné —</option>'
+  if(q){
+    list = list.filter(function(m){
+      return (m.name||'').toLowerCase().indexOf(q) > -1 || (m.city||'').toLowerCase().indexOf(q) > -1;
+    });
+  }
+  var opts = '<option value="">— Aucun / pas encore assigné —</option>'
     + list.map(function(m){ return '<option value="'+m.id+'">'+(m.type==='garage'?'🏪 ':'🔧 ')+(m.name||'—')+(m.city?' · '+m.city:'')+'</option>'; }).join('');
+  if(q && !list.length) opts += '<option value="" disabled>Aucun garage trouvé pour "'+filterText+'"</option>';
+  return opts;
+}
+
+/* Filtre la liste déroulante des mécaniciens en direct pendant la frappe
+   dans le champ de recherche — garde la sélection en cours si elle
+   correspond toujours au filtre. */
+function dossierFilterMec(){
+  var searchEl = document.getElementById('d-mec-search');
+  var sel = document.getElementById('d-mec');
+  if(!searchEl || !sel) return;
+  var current = sel.value;
+  sel.innerHTML = dossierMecOptions(searchEl.value);
+  // On garde la sélection précédente si elle est toujours dans la liste filtrée
+  if(current && sel.querySelector('option[value="'+current+'"]')){ sel.value = current; }
 }
 
 function dossierServiceOptions(){
@@ -1813,7 +1834,9 @@ function openClientDossier(skey){
     +'<div><label style="'+DLBL+'">Heure du RV</label><input id="d-time" type="time" style="'+DFLD+'"></div>'
     +'</div>'
 
-    +'<div style="margin-bottom:10px"><label style="'+DLBL+'">Mécanicien / garage assigné</label><select id="d-mec" onchange="dossierOnMecChange()" style="'+DFLD+'">'+dossierMecOptions()+'</select></div>'
+    +'<div style="margin-bottom:10px"><label style="'+DLBL+'">Mécanicien / garage assigné</label>'
+    +'<input id="d-mec-search" type="text" placeholder="🔍 Chercher un garage par nom ou ville..." oninput="dossierFilterMec()" style="'+DFLD+';margin-bottom:6px">'
+    +'<select id="d-mec" onchange="dossierOnMecChange()" style="'+DFLD+'">'+dossierMecOptions()+'</select></div>'
     +'<div style="margin-bottom:10px"><label style="'+DLBL+'">Lieu du RV</label><input id="d-location" type="text" placeholder="Adresse ou nom du garage" style="'+DFLD+'"></div>'
 
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'
@@ -1944,9 +1967,9 @@ function saveDossierRecord(){
         created_at: firebase.firestore.FieldValue.serverTimestamp()
       }).catch(function(e){ console.log('price_checks non alimenté:', e.message); });
     }
-    ['d-title','d-cost','d-saved','d-note','d-next','d-time','d-location'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
+    ['d-title','d-cost','d-saved','d-note','d-next','d-time','d-location','d-mec-search'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
     document.getElementById('d-service').value = '';
-    document.getElementById('d-mec').value = '';
+    document.getElementById('d-mec').innerHTML = dossierMecOptions();
     dossierOnServiceChange();
     btn.disabled = false; btn.textContent = '💾 Ajouter au dossier';
     loadDossierRecords();
