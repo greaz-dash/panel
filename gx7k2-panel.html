@@ -423,6 +423,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
     <div class="tab" id="tab-mec" onclick="switchTab('mec')">👨‍🔧 Mécaniciens <span class="tbadge blue" id="tb2">0</span></div>
     <div class="tab" id="tab-rdv" onclick="switchTab('rdv')">📅 Réservations <span class="tbadge orange" id="tb3">0</span></div>
     <div class="tab" id="tab-crm" onclick="switchTab('crm')">👤 Répertoire clients <span class="tbadge" id="tbcrm" style="background:#0E9F6E">0</span></div>
+    <div class="tab" id="tab-chat" onclick="switchTab('chat')">💬 Messages <span class="tbadge" id="tbchat" style="background:#E11D48">0</span></div>
+    <div class="tab" id="tab-market" onclick="switchTab('market')">💹 Prix marché</div>
     <div class="tab" id="tab-annuaire" onclick="switchTab('annuaire')">📇 Annuaire <span class="tbadge purple" id="tb4">0</span></div>
     <div class="tab" id="tab-claims" onclick="switchTab('claims')">✋ Revendications <span class="tbadge" id="tb5" style="background:#00C26F">0</span></div>
     <div class="tab" id="tab-jobs" onclick="switchTab('jobs')">🔧 Assignations <span class="tbadge" id="tbjobs" style="background:#F59E0B">0</span></div>
@@ -509,6 +511,40 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
       </div>
       <div id="crm-stats" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1rem"></div>
       <div id="crm-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
+    </div>
+
+    <!-- MESSAGES (chat clients) -->
+    <div class="panel" id="panel-chat">
+      <div style="background:#FFF1F2;border:1px solid #FECDD3;border-radius:10px;padding:12px 14px;font-size:12.5px;color:#9F1239;line-height:1.6;margin-bottom:1rem">
+        <b>💬 Messages des clients.</b> Chaque client connecté peut te écrire depuis son espace Greaz. Clique une conversation pour répondre — c'est en temps réel des deux côtés.
+      </div>
+      <div class="toolbar">
+        <button class="tool-btn" onclick="loadChatList()">🔄 Rafraîchir</button>
+      </div>
+      <div id="chat-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
+    </div>
+
+    <!-- PRIX MARCHÉ (ticker style bourse sur le site client) -->
+    <div class="panel" id="panel-market">
+      <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 14px;font-size:12.5px;color:#1E40AF;line-height:1.6;margin-bottom:1rem">
+        <b>💹 Prix affichés sur le tableau de bord des clients (style "bourse").</b> Mets ces prix à jour chaque semaine — les clients voient la variation par rapport à la dernière mise à jour, comme un cours boursier.
+      </div>
+
+      <div class="section-title">⛽ Carburant & électricité (Québec)</div>
+      <div class="garage-form" style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;background:#FAFAFB;border:1px solid var(--line,#e5e7eb);border-radius:12px;padding:14px;margin-bottom:1rem">
+        <div class="ff"><label style="font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Essence ordinaire ($/L)</label>
+          <input type="number" step="0.001" id="mkt-fuel" placeholder="1.679" style="width:140px;padding:9px 11px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13.5px"></div>
+        <div class="ff"><label style="font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Recharge électrique ($/kWh)</label>
+          <input type="number" step="0.001" id="mkt-ev" placeholder="0.145" style="width:140px;padding:9px 11px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13.5px"></div>
+        <button class="tool-btn green" onclick="saveMarketBase()">💾 Enregistrer</button>
+        <div id="mkt-updated" style="font-size:11.5px;color:var(--muted,#6B7280);width:100%"></div>
+      </div>
+
+      <div class="section-title">📍 Entretien courant par ville</div>
+      <div style="font-size:12px;color:var(--muted,#6B7280);margin-bottom:.75rem">Le client voit le prix de sa ville (selon son adresse). Ajoute une ville "Québec (moyenne)" comme valeur par défaut si sa ville n'est pas dans la liste.</div>
+      <div class="toolbar"><button class="tool-btn" onclick="addMarketCityRow()">➕ Ajouter une ville</button></div>
+      <div id="mkt-cities-list" style="margin-bottom:1rem"></div>
+      <button class="tool-btn green" onclick="saveMarketCities()">💾 Enregistrer les prix par ville</button>
     </div>
 
     <!-- MEMBRES / ABONNEMENTS -->
@@ -1019,6 +1055,7 @@ var _notifReady = false; // évite de notifier au premier chargement
 var _seenLeadIds = {};
 var _seenRdvIds = {};
 var _seenClaimIds = {};
+var _seenChatAt = {};
 
 function toggleNotifSound(){
   _notifSoundOn = !_notifSoundOn;
@@ -1149,6 +1186,35 @@ function startRealtimeNotifications(){
     });
   }, function(err){ console.log('Notif claims error:', err.message); });
 
+  // LISTENER : nouveaux messages clients (chat) — compte les non-lus + toast
+  db.collection('chats').get().then(function(seedSnap){
+    seedSnap.docs.forEach(function(doc){
+      var d = doc.data();
+      _seenChatAt[doc.id] = (d.last_at && d.last_at.toMillis) ? d.last_at.toMillis() : 0;
+    });
+    db.collection('chats').onSnapshot(function(snap){
+      var unreadCount = 0;
+      snap.docs.forEach(function(doc){ if(doc.data().unread_by_admin) unreadCount++; });
+      var badge = document.getElementById('tbchat');
+      if(badge){ badge.textContent = unreadCount; badge.style.display = unreadCount>0 ? 'inline-block' : 'none'; }
+      snap.docChanges().forEach(function(change){
+        var d = change.doc.data();
+        var lastAtMs = (d.last_at && d.last_at.toMillis) ? d.last_at.toMillis() : 0;
+        var isClientMsg = d.last_message && d.last_message.indexOf('🔧 ') !== 0;
+        if(_notifReady && d.unread_by_admin && isClientMsg && _seenChatAt[change.doc.id] !== lastAtMs){
+          _seenChatAt[change.doc.id] = lastAtMs;
+          _notifCount++;
+          updateNotifBadge();
+          showNotif('💬 Nouveau message !', (d.client_name||'Client')+' : '+(d.last_message||''), 'chat');
+          var chatPanel = document.getElementById('panel-chat');
+          if(chatPanel && chatPanel.classList.contains('act')) loadChatList();
+        } else {
+          _seenChatAt[change.doc.id] = lastAtMs;
+        }
+      });
+    }, function(err){ console.log('Notif chat error:', err.message); });
+  }).catch(function(e){ console.log('Chat seed error:', e); });
+
   console.log('✅ Notifications temps réel activées');
 }
 
@@ -1178,6 +1244,8 @@ function switchTab(t){
   if(t==='partners') loadPartnersAdmin();
   if(t==='crm') buildCRM();
   if(t==='membres') loadMembres();
+  if(t==='chat') loadChatList();
+  if(t==='market') loadMarketPrices();
 }
 
 /* Met à jour les indicateurs de défilement des onglets (dégradés gauche/droite) */
@@ -1307,6 +1375,85 @@ async function saveSavings(){
   } catch(e){
     alert('Erreur : '+(e.message||e)+'\n\nAs-tu publié les règles Firestore mises à jour ? (l\'admin doit pouvoir écrire dans settings)');
   }
+}
+
+/* ══════════════════════════════════════════
+   PRIX MARCHÉ — carburant / électricité / entretien par ville.
+   Alimente le visuel "bourse" du tableau de bord client (settings/market_prices).
+   ══════════════════════════════════════════ */
+var _mktCities = [];
+
+function loadMarketPrices(){
+  db.collection('settings').doc('market_prices').get().then(function(doc){
+    var d = doc.exists ? doc.data() : {};
+    var f = document.getElementById('mkt-fuel'); if(f) f.value = (typeof d.fuel_regular === 'number') ? d.fuel_regular : '';
+    var e = document.getElementById('mkt-ev'); if(e) e.value = (typeof d.ev_kwh === 'number') ? d.ev_kwh : '';
+    var upd = document.getElementById('mkt-updated');
+    if(upd) upd.textContent = (d.updated_at && d.updated_at.toDate)
+      ? ('Dernière mise à jour : '+d.updated_at.toDate().toLocaleDateString('fr-CA',{day:'numeric',month:'long',year:'numeric'})+' à '+d.updated_at.toDate().toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'}))
+      : 'Pas encore publié.';
+    _mktCities = Array.isArray(d.city_prices) ? d.city_prices.slice() : [];
+    renderMarketCities();
+  }).catch(function(e){ console.log('Prix marché:', e); });
+}
+
+function renderMarketCities(){
+  var el = document.getElementById('mkt-cities-list');
+  if(!el) return;
+  if(!_mktCities.length){
+    el.innerHTML = '<div class="acc-empty-mini" style="font-size:12.5px;color:var(--muted,#6B7280);padding:10px 2px">Aucune ville ajoutée. Clique "➕ Ajouter une ville" — pense à en mettre une nommée "Québec (moyenne)" comme valeur par défaut.</div>';
+    return;
+  }
+  el.innerHTML = _mktCities.map(function(c,i){
+    return '<div class="pending-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:9px;background:#FAFAFB;border:1px solid #eee;border-radius:10px;margin-bottom:7px">'
+      +'<input type="text" value="'+(c.city||'').replace(/"/g,'&quot;')+'" placeholder="Ville (ex. Montréal)" style="flex:1;min-width:150px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px" onchange="_mktCities['+i+'].city=this.value">'
+      +'<input type="number" value="'+(c.vidange||'')+'" placeholder="Vidange $" style="width:110px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px" onchange="_mktCities['+i+'].vidange=parseFloat(this.value)||0">'
+      +'<input type="number" value="'+(c.pneus||'')+'" placeholder="4 pneus $" style="width:110px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px" onchange="_mktCities['+i+'].pneus=parseFloat(this.value)||0">'
+      +'<button class="close-btn" onclick="_mktCities.splice('+i+',1);renderMarketCities()">✕</button>'
+      +'</div>';
+  }).join('');
+}
+
+function addMarketCityRow(){
+  _mktCities.push({ city:'', vidange:0, pneus:0 });
+  renderMarketCities();
+}
+
+async function saveMarketBase(){
+  var fuelEl = document.getElementById('mkt-fuel');
+  var evEl = document.getElementById('mkt-ev');
+  var fuel = parseFloat(fuelEl.value);
+  var ev = parseFloat(evEl.value);
+  if(isNaN(fuel) && isNaN(ev)){ alert('Entre au moins un prix.'); return; }
+  try {
+    var ref = db.collection('settings').doc('market_prices');
+    var snap = await ref.get();
+    var cur = snap.exists ? snap.data() : {};
+    var updates = { updated_at: firebase.firestore.FieldValue.serverTimestamp() };
+    if(!isNaN(fuel)){
+      if(typeof cur.fuel_regular === 'number' && cur.fuel_regular !== fuel) updates.fuel_regular_prev = cur.fuel_regular;
+      updates.fuel_regular = fuel;
+    }
+    if(!isNaN(ev)){
+      if(typeof cur.ev_kwh === 'number' && cur.ev_kwh !== ev) updates.ev_kwh_prev = cur.ev_kwh;
+      updates.ev_kwh = ev;
+    }
+    await ref.set(updates, { merge:true });
+    alert('✓ Prix carburant / électricité mis à jour — les clients verront la variation.');
+    loadMarketPrices();
+  } catch(e){ alert('Erreur : '+(e.message||e)); }
+}
+
+async function saveMarketCities(){
+  var clean = _mktCities.filter(function(c){ return (c.city||'').trim(); }).map(function(c){
+    return { city:c.city.trim(), vidange:Number(c.vidange)||0, pneus:Number(c.pneus)||0 };
+  });
+  try {
+    await db.collection('settings').doc('market_prices').set({ city_prices: clean }, { merge:true });
+    alert('✓ Prix par ville enregistrés.');
+    _mktCities = clean;
+    renderMarketCities();
+  } catch(e){ alert('Erreur : '+(e.message||e)); }
 }
 
 async function deleteMembre(uid, name){
@@ -1984,6 +2131,113 @@ function deleteDossierRecord(id){
   db.collection('service_history').doc(id).delete().then(function(){
     loadDossierRecords();
   }).catch(function(e){ alert('Erreur : '+e.message); });
+}
+
+/* ══════════════════════════════════════════
+   MESSAGES — chat en temps réel avec les clients connectés.
+   Un doc par client dans "chats" (id = uid du client), messages en tableau.
+   ══════════════════════════════════════════ */
+var _chatConvos = [];
+var _chatThreadUid = null;
+var _chatThreadUnsub = null;
+
+function loadChatList(){
+  db.collection('chats').orderBy('last_at','desc').get().then(function(snap){
+    _chatConvos = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    renderChatList();
+  }).catch(function(e){
+    console.log('Chat list:', e);
+    var el = document.getElementById('chat-list');
+    if(el) el.innerHTML = '<div class="acc-empty-mini">Erreur de chargement : '+(e.message||e)+'</div>';
+  });
+}
+
+function renderChatList(){
+  var el = document.getElementById('chat-list');
+  if(!el) return;
+  if(!_chatConvos.length){
+    el.innerHTML = '<div class="acc-empty-mini" style="padding:1.5rem;text-align:center;color:#9CA3AF">Aucune conversation pour l\'instant.</div>';
+    return;
+  }
+  el.innerHTML = _chatConvos.map(function(c){
+    var unread = !!c.unread_by_admin;
+    var when = c.last_at && c.last_at.toDate ? c.last_at.toDate().toLocaleDateString('fr-CA',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+    return '<div class="pending-row" style="cursor:pointer;'+(unread?'background:#FFF7F7;border-color:#FECDD3':'')+'" onclick="openChatThread(\''+c.id+'\')">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-weight:700;font-size:13.5px">'+(unread?'🔴 ':'')+(c.client_name||'Client')+'</div>'
+      +'<div style="font-size:12px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">'+(c.last_message||'')+'</div>'
+      +'</div>'
+      +'<div style="font-size:11px;color:#9CA3AF;flex-shrink:0">'+when+'</div>'
+      +'</div></div>';
+  }).join('');
+}
+
+function closeChatThread(){
+  if(_chatThreadUnsub){ _chatThreadUnsub(); _chatThreadUnsub = null; }
+  _chatThreadUid = null;
+  var modal = document.getElementById('chat-thread-modal');
+  if(modal) modal.remove();
+}
+
+function openChatThread(uid){
+  var c = _chatConvos.find(function(x){ return x.id === uid; });
+  if(!c) return;
+  _chatThreadUid = uid;
+
+  var modal = document.createElement('div');
+  modal.id = 'chat-thread-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(23,26,32,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.innerHTML = '<div style="background:white;border-radius:18px;width:100%;max-width:480px;height:min(640px,90vh);display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden">'
+    +'<div style="padding:1rem 1.25rem;border-bottom:1px solid #F3F4F6;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">'
+    +'<div><div style="font-weight:800;font-size:15px">💬 '+(c.client_name||'Client')+'</div><div style="font-size:11.5px;color:#9CA3AF">'+(c.client_email||'')+'</div></div>'
+    +'<button onclick="closeChatThread()" style="width:30px;height:30px;border-radius:50%;border:none;background:#F3F4F6;font-size:14px;cursor:pointer">✕</button>'
+    +'</div>'
+    +'<div id="chat-thread-msgs" style="flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:8px;background:#FAFAFB"></div>'
+    +'<div style="padding:.85rem;border-top:1px solid #F3F4F6;display:flex;gap:8px;flex-shrink:0">'
+    +'<input id="chat-thread-input" type="text" placeholder="Écris ta réponse..." style="flex:1;padding:10px 13px;border:1.5px solid #e5e7eb;border-radius:20px;font-size:13.5px;font-family:inherit" onkeydown="if(event.key===\'Enter\')sendAdminChatMessage()">'
+    +'<button onclick="sendAdminChatMessage()" style="width:40px;height:40px;border-radius:50%;border:none;background:#0E9F6E;color:white;font-size:16px;cursor:pointer;flex-shrink:0">➤</button>'
+    +'</div></div>';
+  document.body.appendChild(modal);
+  modal.addEventListener('click', function(e){ if(e.target===modal) closeChatThread(); });
+
+  // Marque comme lu côté admin
+  db.collection('chats').doc(uid).set({ unread_by_admin:false }, { merge:true }).catch(function(){});
+
+  if(_chatThreadUnsub) _chatThreadUnsub();
+  _chatThreadUnsub = db.collection('chats').doc(uid).onSnapshot(function(doc){
+    var d = doc.data() || {};
+    renderChatThreadMsgs(d.messages || []);
+  }, function(e){ console.log('Chat thread:', e); });
+}
+
+function renderChatThreadMsgs(messages){
+  var el = document.getElementById('chat-thread-msgs');
+  if(!el) return;
+  var list = messages.slice().sort(function(a,b){ return (a.at||0)-(b.at||0); });
+  el.innerHTML = list.map(function(m){
+    var mine = m.from === 'admin';
+    var time = m.at ? new Date(m.at).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'}) : '';
+    return '<div style="align-self:'+(mine?'flex-end':'flex-start')+';max-width:78%">'
+      +'<div style="background:'+(mine?'#0E9F6E':'#fff')+';color:'+(mine?'#fff':'#111')+';border:'+(mine?'none':'1px solid #eee')+';padding:9px 13px;border-radius:14px;'+(mine?'border-bottom-right-radius:4px':'border-bottom-left-radius:4px')+';font-size:13.5px;line-height:1.45;box-shadow:0 1px 3px rgba(0,0,0,.05)">'+(m.text||'').replace(/</g,'&lt;')+'</div>'
+      +'<div style="font-size:10px;color:#B0B3B8;margin-top:3px;text-align:'+(mine?'right':'left')+'">'+time+'</div>'
+      +'</div>';
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+async function sendAdminChatMessage(){
+  var inp = document.getElementById('chat-thread-input');
+  var text = (inp.value||'').trim();
+  if(!text || !_chatThreadUid) return;
+  inp.value = '';
+  try {
+    await db.collection('chats').doc(_chatThreadUid).set({
+      messages: firebase.firestore.FieldValue.arrayUnion({ from:'admin', text:text, at:Date.now() }),
+      last_message: '🔧 '+text, last_at: firebase.firestore.FieldValue.serverTimestamp(),
+      unread_by_client: true, unread_by_admin: false,
+    }, { merge:true });
+  } catch(e){ alert('Erreur d\'envoi : '+(e.message||e)); }
 }
 
 /* ══════════ AJOUT MANUEL D'UN CLIENT ══════════ */
