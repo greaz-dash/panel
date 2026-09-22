@@ -2003,7 +2003,7 @@ function openClientDossier(skey){
     +'<div id="d-err" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:9px 12px;border-radius:8px;font-size:12.5px;margin-bottom:.75rem"></div>'
     +'<button id="d-save-btn" onclick="saveDossierRecord()" style="width:100%;padding:12px;background:#0E9F6E;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Ajouter au dossier</button>'
     +'</div>'
-    +'<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7280;margin-bottom:8px">🕓 Historique</div>'
+    +'<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7280;margin-bottom:8px">📋 Entretiens du client</div>'
     +'<div id="dossier-list">Chargement...</div>'
     +'<button onclick="document.getElementById(\'dossier-modal\').remove()" style="width:100%;margin-top:1rem;padding:11px;background:#F3F4F6;color:#6B7280;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Fermer</button>'
     +'</div>';
@@ -2036,6 +2036,23 @@ function loadDossierRecords(){
   });
 }
 
+function dossierItemHtml(r, isUpcoming){
+  var dateStr = r.date ? new Date(r.date+'T12:00:00').toLocaleDateString('fr-CA',{day:'numeric',month:'short',year:'numeric'}) : '—';
+  return '<div style="background:'+(isUpcoming?'#EFF6FF':'#FAFAFB')+';border:1px solid '+(isUpcoming?'#BFDBFE':'#E5E7EB')+';border-radius:10px;padding:10px 12px;margin-bottom:8px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+    +'<div><b style="font-size:13px">'+(r.title||'Entretien')+'</b><div style="font-size:11px;color:#6B7280;margin-top:1px">'+(isUpcoming?'<span style="color:#1D4ED8;font-weight:700">À venir</span> · ':'')+dateStr+(r.time?' à '+r.time:'')+'</div></div>'
+    +'<button onclick="deleteDossierRecord(\''+r.id+'\')" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:13px;flex-shrink:0">🗑</button>'
+    +'</div>'
+    + ((r.mechanic_name||r.location) ? '<div style="font-size:11.5px;color:#6B7280;margin-top:4px">'+(r.mechanic_name?'🔧 '+r.mechanic_name:'')+(r.mechanic_name&&r.location?' · ':'')+(r.location?'📍 '+r.location:'')+'</div>' : '')
+    + (r.note ? '<div style="font-size:12px;color:#374151;margin-top:6px">'+r.note+'</div>' : '')
+    + '<div style="display:flex;gap:12px;margin-top:6px;font-size:11.5px;color:#6B7280;flex-wrap:wrap">'
+    + (r.cost ? '<span>Payé : <b>'+Number(r.cost).toLocaleString('fr-CA',{style:'currency',currency:'CAD'})+'</b></span>' : '')
+    + (r.saved ? '<span style="color:#15803D">Économisé : <b>'+Number(r.saved).toLocaleString('fr-CA',{style:'currency',currency:'CAD'})+'</b></span>' : '')
+    + (r.next_due_date ? '<span style="color:#B45309">Prochain : <b>'+r.next_due_date+'</b></span>' : '')
+    + '</div>'
+    +'</div>';
+}
+
 function renderDossierList(records){
   var statEl = document.getElementById('dossier-stat');
   var listEl = document.getElementById('dossier-list');
@@ -2046,22 +2063,24 @@ function renderDossierList(records){
     listEl.innerHTML = '<div style="text-align:center;padding:1.5rem;color:#9CA3AF;font-size:12.5px">Aucun entretien enregistré pour l\'instant.</div>';
     return;
   }
-  listEl.innerHTML = records.map(function(r){
-    var dateStr = r.date ? new Date(r.date+'T12:00:00').toLocaleDateString('fr-CA',{day:'numeric',month:'short',year:'numeric'}) : '—';
-    return '<div style="background:#FAFAFB;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;margin-bottom:8px">'
-      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
-      +'<div><b style="font-size:13px">'+(r.title||'Entretien')+'</b><div style="font-size:11px;color:#6B7280;margin-top:1px">'+dateStr+(r.time?' à '+r.time:'')+'</div></div>'
-      +'<button onclick="deleteDossierRecord(\''+r.id+'\')" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:13px;flex-shrink:0">🗑</button>'
-      +'</div>'
-      + ((r.mechanic_name||r.location) ? '<div style="font-size:11.5px;color:#6B7280;margin-top:4px">'+(r.mechanic_name?'🔧 '+r.mechanic_name:'')+(r.mechanic_name&&r.location?' · ':'')+(r.location?'📍 '+r.location:'')+'</div>' : '')
-      + (r.note ? '<div style="font-size:12px;color:#374151;margin-top:6px">'+r.note+'</div>' : '')
-      + '<div style="display:flex;gap:12px;margin-top:6px;font-size:11.5px;color:#6B7280;flex-wrap:wrap">'
-      + (r.cost ? '<span>Payé : <b>'+Number(r.cost).toLocaleString('fr-CA',{style:'currency',currency:'CAD'})+'</b></span>' : '')
-      + (r.saved ? '<span style="color:#15803D">Économisé : <b>'+Number(r.saved).toLocaleString('fr-CA',{style:'currency',currency:'CAD'})+'</b></span>' : '')
-      + (r.next_due_date ? '<span style="color:#B45309">Prochain : <b>'+r.next_due_date+'</b></span>' : '')
-      + '</div>'
-      +'</div>';
-  }).join('');
+  // Un entretien daté dans le futur (ou aujourd'hui) = un RV à venir. Une
+  // fois la date passée, il tombe automatiquement dans l'historique — le
+  // client voit exactement la même séparation dans son espace.
+  var today = new Date().toISOString().slice(0,10);
+  var upcoming = records.filter(function(r){ return r.date && r.date >= today; })
+    .sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
+  var past = records.filter(function(r){ return !r.date || r.date < today; })
+    .sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+  var html = '';
+  if(upcoming.length){
+    html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#1D4ED8;margin-bottom:6px">📅 À venir</div>';
+    html += upcoming.map(function(r){ return dossierItemHtml(r, true); }).join('');
+  }
+  if(past.length){
+    html += '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7280;margin:'+(upcoming.length?'12px':'0')+' 0 6px">🕓 Historique</div>';
+    html += past.map(function(r){ return dossierItemHtml(r, false); }).join('');
+  }
+  listEl.innerHTML = html;
 }
 
 function saveDossierRecord(){
