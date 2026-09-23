@@ -419,6 +419,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
   <div class="tabs-wrap">
   <div class="tabs" id="tabsScroll">
     <div class="tab act" id="tab-clients" onclick="switchTab('clients')">🔧 Clients <span class="tbadge" id="tb1">0</span></div>
+    <div class="tab" id="tab-traffic" onclick="switchTab('traffic')">📈 Trafic</div>
     <div class="tab" id="tab-membres" onclick="switchTab('membres')">💳 Membres <span class="tbadge" id="tbmembres" style="background:#00C26F">0</span></div>
     <div class="tab" id="tab-mec" onclick="switchTab('mec')">👨‍🔧 Mécaniciens <span class="tbadge blue" id="tb2">0</span></div>
     <div class="tab" id="tab-rdv" onclick="switchTab('rdv')">📅 Réservations <span class="tbadge orange" id="tb3">0</span></div>
@@ -555,6 +556,23 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
       </div>
       <div class="toolbar"><button class="tool-btn" onclick="loadRentalLeads()">🔄 Rafraîchir</button></div>
       <div id="rentals-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
+    </div>
+
+    <!-- TRAFIC (visites / visiteurs uniques / ouvertures app / installs) -->
+    <div class="panel" id="panel-traffic">
+      <div style="background:#EEF1FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 14px;font-size:12.5px;color:#1A3CFF;line-height:1.6;margin-bottom:1rem">
+        <b>📈 Trafic sur greaz.ca.</b> Compteur maison — pas de service tiers, aucune donnée personnelle. Un « visiteur unique » compte une fois par jour et par appareil ; « ouvertures app » = le site ouvert depuis l'app installée (pas le navigateur).
+      </div>
+      <div class="toolbar" style="margin-top:0">
+        <button class="filter-btn" id="trf-range-7" onclick="setTrafficRange(7,this)">7 jours</button>
+        <button class="filter-btn act" id="trf-range-14" onclick="setTrafficRange(14,this)">14 jours</button>
+        <button class="filter-btn" id="trf-range-30" onclick="setTrafficRange(30,this)">30 jours</button>
+        <button class="tool-btn" onclick="loadTrafficData(_trafficRangeDays)">🔄 Rafraîchir</button>
+        <button class="tool-btn" id="trf-table-toggle" onclick="toggleTrafficTable()">📋 Voir en tableau</button>
+      </div>
+      <div id="traffic-stats" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1rem"></div>
+      <div id="traffic-chart-wrap" style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px 18px 8px;position:relative"></div>
+      <div id="traffic-table-wrap" style="display:none;margin-top:1rem"></div>
     </div>
 
     <!-- MEMBRES / ABONNEMENTS -->
@@ -1257,6 +1275,7 @@ function switchTab(t){
   if(t==='chat') loadChatList();
   if(t==='market') loadMarketPrices();
   if(t==='rentals') loadRentalLeads();
+  if(t==='traffic') loadTrafficData(_trafficRangeDays);
 }
 
 /* Met à jour les indicateurs de défilement des onglets (dégradés gauche/droite) */
@@ -1538,6 +1557,170 @@ async function deleteRentalLead(id){
     _rentalLeads = _rentalLeads.filter(function(x){ return x.id !== id; });
     renderRentalLeads();
   } catch(e){ alert('Erreur : '+(e.message||e)); }
+}
+
+/* ══════════════════════════════════════════
+   TRAFIC — visites / visiteurs uniques / ouvertures app / installs
+   Compteur maison alimenté par greaz-site.html (collection "traffic",
+   un doc par jour, id = YYYY-MM-DD). Pas de service tiers.
+   ══════════════════════════════════════════ */
+var _trafficRangeDays = 14;
+var _trafficData = [];
+var _trafficTableShown = false;
+
+function setTrafficRange(days, btn){
+  _trafficRangeDays = days;
+  document.querySelectorAll('#panel-traffic .filter-btn').forEach(function(b){ b.classList.remove('act'); });
+  if(btn) btn.classList.add('act');
+  loadTrafficData(days);
+}
+
+function trafficDateRange(days){
+  var out = [];
+  for(var i=days-1; i>=0; i--){
+    var d = new Date();
+    d.setDate(d.getDate()-i);
+    out.push(d.toISOString().slice(0,10));
+  }
+  return out;
+}
+
+function loadTrafficData(days){
+  days = days || _trafficRangeDays;
+  var wrap = document.getElementById('traffic-chart-wrap');
+  if(wrap) wrap.innerHTML = '<div class="loading" style="padding:2rem"><span class="spinner"></span>Chargement...</div>';
+  db.collection('traffic').orderBy(firebase.firestore.FieldPath.documentId(),'desc').limit(days).get().then(function(snap){
+    var byDate = {};
+    snap.forEach(function(doc){ byDate[doc.id] = doc.data(); });
+    var dates = trafficDateRange(days);
+    _trafficData = dates.map(function(d){
+      var v = byDate[d] || {};
+      return {
+        date: d,
+        visits: v.visits || 0,
+        unique_visitors: v.unique_visitors || 0,
+        app_opens: v.app_opens || 0,
+        installs: v.installs || 0,
+      };
+    });
+    renderTrafficStats(_trafficData);
+    renderTrafficChart(_trafficData);
+    if(_trafficTableShown) renderTrafficTable(_trafficData);
+  }).catch(function(e){
+    if(wrap) wrap.innerHTML = '<div style="padding:2rem;color:#DC2626;font-size:12.5px">Erreur : '+(e.message||e)+'</div>';
+  });
+}
+
+function trafficFmtDate(d){
+  return new Date(d+'T12:00:00').toLocaleDateString('fr-CA', {day:'numeric', month:'short'});
+}
+
+function renderTrafficStats(data){
+  var today = new Date().toISOString().slice(0,10);
+  var t = data.find(function(x){ return x.date === today; }) || {visits:0, unique_visitors:0, app_opens:0, installs:0};
+  var el = document.getElementById('traffic-stats');
+  if(!el) return;
+  function stat(n,l,color){ return '<div style="flex:1;min-width:130px;background:white;border:1px solid var(--border);border-radius:12px;padding:12px 14px"><div style="font-size:22px;font-weight:800;letter-spacing:-.02em;color:'+color+'">'+n.toLocaleString('fr-CA')+'</div><div style="font-size:11.5px;color:var(--muted);margin-top:2px">'+l+'</div></div>'; }
+  el.innerHTML = stat(t.visits, 'Visites aujourd\'hui', '#1A3CFF')
+    + stat(t.unique_visitors, 'Visiteurs uniques', '#0E9F6E')
+    + stat(t.app_opens, 'Ouvertures app', '#8B5CF6')
+    + stat(t.installs, 'Installations', '#D97706');
+}
+
+function trafficNiceMax(v){
+  if(v <= 5) return 5;
+  var mag = Math.pow(10, Math.floor(Math.log10(v)));
+  var norm = v / mag;
+  var nice = norm <= 1 ? 1 : (norm <= 2 ? 2 : (norm <= 5 ? 5 : 10));
+  return nice * mag;
+}
+
+function renderTrafficChart(data){
+  var wrap = document.getElementById('traffic-chart-wrap');
+  if(!wrap) return;
+  var max = trafficNiceMax(Math.max.apply(null, data.map(function(d){ return d.visits; }).concat([1])));
+  var mid = Math.round(max/2);
+  var labelEvery = data.length > 21 ? 5 : (data.length > 10 ? 2 : 1);
+  var barsHtml = data.map(function(d, i){
+    var pct = max ? (d.visits / max * 100) : 0;
+    if(d.visits > 0) pct = Math.max(pct, 2);
+    return '<div class="trf-col" style="flex:1;min-width:0;height:100%;display:flex;flex-direction:column;justify-content:flex-end;position:relative;cursor:pointer"'
+      +' onmouseenter="trafficShowTip(event,'+i+')" onmousemove="trafficMoveTip(event)" onmouseleave="trafficHideTip()">'
+      +'<div class="trf-bar" style="height:'+pct+'%;background:#1A3CFF;border-radius:4px 4px 0 0;transition:opacity .15s"></div>'
+      +'</div>';
+  }).join('');
+  var labelsHtml = data.map(function(d, i){
+    var showLabel = (data.length - 1 - i) % labelEvery === 0;
+    return '<div style="flex:1;min-width:0;text-align:center;font-size:9.5px;color:var(--muted);white-space:nowrap;overflow:hidden">'+(showLabel ? trafficFmtDate(d.date) : '')+'</div>';
+  }).join('');
+  wrap.innerHTML =
+    '<div style="position:relative">'
+    +'<div style="position:absolute;left:0;right:0;top:0;height:180px;pointer-events:none">'
+    +'<div style="position:absolute;left:0;right:0;top:0;border-top:1px solid var(--border);font-size:9.5px;color:var(--muted);padding-left:2px">'+max.toLocaleString('fr-CA')+'</div>'
+    +'<div style="position:absolute;left:0;right:0;top:50%;border-top:1px solid var(--border);font-size:9.5px;color:var(--muted);padding-left:2px">'+mid.toLocaleString('fr-CA')+'</div>'
+    +'<div style="position:absolute;left:0;right:0;bottom:0;border-top:1.5px solid var(--muted)"></div>'
+    +'</div>'
+    +'<div class="trf-bars" style="display:flex;align-items:flex-end;gap:2px;height:180px;position:relative">'+barsHtml+'</div>'
+    +'</div>'
+    +'<div style="display:flex;gap:2px;margin-top:6px">'+labelsHtml+'</div>'
+    +'<div id="trf-tooltip" style="display:none;position:absolute;background:#171A20;color:#fff;padding:8px 11px;border-radius:9px;font-size:11.5px;line-height:1.6;pointer-events:none;z-index:20;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.22)"></div>';
+}
+
+function trafficShowTip(ev, idx){
+  var d = _trafficData[idx];
+  if(!d) return;
+  var tip = document.getElementById('trf-tooltip');
+  if(!tip) return;
+  tip.innerHTML = '<b>'+trafficFmtDate(d.date)+'</b><br>'
+    +'Visites : <b>'+d.visits+'</b><br>'
+    +'Visiteurs uniques : <b>'+d.unique_visitors+'</b><br>'
+    +'Ouvertures app : <b>'+d.app_opens+'</b><br>'
+    +'Installations : <b>'+d.installs+'</b>';
+  tip.style.display = 'block';
+  trafficMoveTip(ev);
+}
+function trafficMoveTip(ev){
+  var tip = document.getElementById('trf-tooltip');
+  var wrap = document.getElementById('traffic-chart-wrap');
+  if(!tip || !wrap) return;
+  var wrapRect = wrap.getBoundingClientRect();
+  var x = ev.clientX - wrapRect.left + 14;
+  var y = ev.clientY - wrapRect.top - 10;
+  if(x + 170 > wrapRect.width) x = ev.clientX - wrapRect.left - 180;
+  tip.style.left = x+'px';
+  tip.style.top = y+'px';
+}
+function trafficHideTip(){
+  var tip = document.getElementById('trf-tooltip');
+  if(tip) tip.style.display = 'none';
+}
+
+function toggleTrafficTable(){
+  _trafficTableShown = !_trafficTableShown;
+  var el = document.getElementById('traffic-table-wrap');
+  var btn = document.getElementById('trf-table-toggle');
+  if(el) el.style.display = _trafficTableShown ? 'block' : 'none';
+  if(btn) btn.textContent = _trafficTableShown ? '📊 Voir le graphique' : '📋 Voir en tableau';
+  if(_trafficTableShown) renderTrafficTable(_trafficData);
+}
+function renderTrafficTable(data){
+  var el = document.getElementById('traffic-table-wrap');
+  if(!el) return;
+  var rows = data.slice().reverse().map(function(d){
+    return '<tr style="border-bottom:1px solid var(--border)"><td style="padding:7px 10px;font-size:12.5px">'+trafficFmtDate(d.date)+'</td>'
+      +'<td style="padding:7px 10px;font-size:12.5px;text-align:right">'+d.visits+'</td>'
+      +'<td style="padding:7px 10px;font-size:12.5px;text-align:right">'+d.unique_visitors+'</td>'
+      +'<td style="padding:7px 10px;font-size:12.5px;text-align:right">'+d.app_opens+'</td>'
+      +'<td style="padding:7px 10px;font-size:12.5px;text-align:right">'+d.installs+'</td></tr>';
+  }).join('');
+  el.innerHTML = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden">'
+    +'<thead><tr style="background:var(--surface);border-bottom:1px solid var(--border)">'
+    +'<th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase">Date</th>'
+    +'<th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--muted);text-transform:uppercase">Visites</th>'
+    +'<th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--muted);text-transform:uppercase">Uniques</th>'
+    +'<th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--muted);text-transform:uppercase">App</th>'
+    +'<th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--muted);text-transform:uppercase">Installs</th>'
+    +'</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 
 async function deleteMembre(uid, name){
