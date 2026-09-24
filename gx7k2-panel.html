@@ -1589,12 +1589,17 @@ function loadTrafficData(days){
   days = days || _trafficRangeDays;
   var wrap = document.getElementById('traffic-chart-wrap');
   if(wrap) wrap.innerHTML = '<div class="loading" style="padding:2rem"><span class="spinner"></span>Chargement...</div>';
-  db.collection('traffic').orderBy(firebase.firestore.FieldPath.documentId(),'desc').limit(days).get().then(function(snap){
-    var byDate = {};
-    snap.forEach(function(doc){ byDate[doc.id] = doc.data(); });
-    var dates = trafficDateRange(days);
-    _trafficData = dates.map(function(d){
-      var v = byDate[d] || {};
+  var dates = trafficDateRange(days);
+  // Un .get() par jour (id connu = la date) plutôt qu'une requête avec
+  // orderBy — évite d'avoir besoin d'un index composite Firestore, et un
+  // jour sans doc (aucune visite ce jour-là) donne juste 0 partout.
+  Promise.all(dates.map(function(d){
+    return db.collection('traffic').doc(d).get().then(function(doc){
+      return doc.exists ? doc.data() : {};
+    }).catch(function(){ return {}; });
+  })).then(function(results){
+    _trafficData = dates.map(function(d, i){
+      var v = results[i] || {};
       return {
         date: d,
         visits: v.visits || 0,
