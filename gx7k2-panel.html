@@ -2272,6 +2272,7 @@ function openClientDossier(skey){
     +'<div id="d-price-hint" style="display:none;font-size:11px;color:#0F2ACC;background:#EEF1FF;border-radius:7px;padding:6px 9px;margin-bottom:10px">💡 Ce prix va aussi nourrir la base de prix réels affichée aux usagers pour ce type de service.</div>'
 
     +'<div style="margin-bottom:1rem"><label style="'+DLBL+'">Prochain entretien prévu (optionnel — il le voit dans son calendrier)</label><input id="d-next" type="date" style="'+DFLD+'"></div>'
+    +'<div style="margin-bottom:1rem"><label style="'+DLBL+'">🧾 Facture (photo ou PDF — optionnel)</label><input id="d-facture" type="file" accept="image/*,application/pdf" onchange="document.getElementById(\'d-facture-name\').textContent = this.files[0] ? \'📎 \' + this.files[0].name : \'\'" style="'+DFLD+';padding:8px 10px"><div id="d-facture-name" style="font-size:11.5px;color:#6B7280;margin-top:3px"></div></div>'
     +'<div id="d-err" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:9px 12px;border-radius:8px;font-size:12.5px;margin-bottom:.75rem"></div>'
     +'<button id="d-save-btn" onclick="saveDossierRecord()" style="width:100%;padding:12px;background:#0E9F6E;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Ajouter au dossier</button>'
     +'</div>'
@@ -2310,6 +2311,10 @@ function loadDossierRecords(){
 
 function dossierItemHtml(r, isUpcoming){
   var dateStr = r.date ? new Date(r.date+'T12:00:00').toLocaleDateString('fr-CA',{day:'numeric',month:'short',year:'numeric'}) : '—';
+  var factureHtml = r.facture_url
+    ? '<a href="'+r.facture_url+'" target="_blank" rel="noopener" style="font-size:11px;color:#0E9F6E;font-weight:700;text-decoration:none">🧾 Voir la facture</a>'
+    : '<label style="font-size:11px;color:#6B7280;cursor:pointer;text-decoration:underline">🧾 Joindre une facture'
+      +'<input type="file" accept="image/*,application/pdf" style="display:none" onchange="attachFactureToRecord(\''+r.id+'\', this)"></label>';
   return '<div style="background:'+(isUpcoming?'#EFF6FF':'#FAFAFB')+';border:1px solid '+(isUpcoming?'#BFDBFE':'#E5E7EB')+';border-radius:10px;padding:10px 12px;margin-bottom:8px">'
     +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
     +'<div><b style="font-size:13px">'+(r.title||'Entretien')+'</b><div style="font-size:11px;color:#6B7280;margin-top:1px">'+(isUpcoming?'<span style="color:#1D4ED8;font-weight:700">À venir</span> · ':'')+dateStr+(r.time?' à '+r.time:'')+'</div></div>'
@@ -2317,11 +2322,12 @@ function dossierItemHtml(r, isUpcoming){
     +'</div>'
     + ((r.mechanic_name||r.location) ? '<div style="font-size:11.5px;color:#6B7280;margin-top:4px">'+(r.mechanic_name?'🔧 '+r.mechanic_name:'')+(r.mechanic_name&&r.location?' · ':'')+(r.location?'📍 '+r.location:'')+'</div>' : '')
     + (r.note ? '<div style="font-size:12px;color:#374151;margin-top:6px">'+r.note+'</div>' : '')
-    + '<div style="display:flex;gap:12px;margin-top:6px;font-size:11.5px;color:#6B7280;flex-wrap:wrap">'
+    + '<div style="display:flex;gap:12px;margin-top:6px;font-size:11.5px;color:#6B7280;flex-wrap:wrap;align-items:center">'
     + (r.cost ? '<span>Payé : <b>'+Number(r.cost).toLocaleString('fr-CA',{style:'currency',currency:'CAD'})+'</b></span>' : '')
     + (r.saved ? '<span style="color:#15803D">Économisé : <b>'+Number(r.saved).toLocaleString('fr-CA',{style:'currency',currency:'CAD'})+'</b></span>' : '')
     + (r.next_due_date ? '<span style="color:#B45309">Prochain : <b>'+r.next_due_date+'</b></span>' : '')
     + '</div>'
+    + '<div id="facture-status-'+r.id+'" style="margin-top:6px">'+factureHtml+'</div>'
     +'</div>';
 }
 
@@ -2355,6 +2361,26 @@ function renderDossierList(records){
   listEl.innerHTML = html;
 }
 
+/* ══════════ FACTURES — upload générique vers Firebase Storage ══════════
+   Réutilisé par le dossier client (service_history) et les demandes de
+   soumission (leads). Accepte photo ou PDF, retourne {url, name} une fois
+   téléversé. */
+function uploadFactureFile(file, pathPrefix){
+  if(!file) return Promise.resolve(null);
+  var maxMB = 15;
+  if(file.size > maxMB * 1024 * 1024){
+    return Promise.reject(new Error('Le fichier est trop volumineux (max '+maxMB+' Mo).'));
+  }
+  var safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+  var path = pathPrefix + '/' + Date.now() + '_' + safeName;
+  var ref = firebase.storage().ref(path);
+  return ref.put(file).then(function(snap){
+    return snap.ref.getDownloadURL();
+  }).then(function(url){
+    return { url: url, name: file.name };
+  });
+}
+
 function saveDossierRecord(){
   if(!_dossierUid) return;
   var btn = document.getElementById('d-save-btn');
@@ -2371,26 +2397,32 @@ function saveDossierRecord(){
   var saved = document.getElementById('d-saved').value;
   var note = document.getElementById('d-note').value.trim();
   var next = document.getElementById('d-next').value;
+  var factureFile = document.getElementById('d-facture').files[0] || null;
   if(!date || !title){
     errEl.textContent = 'La date et le titre sont obligatoires.'; errEl.style.display = 'block'; return;
   }
   errEl.style.display = 'none';
-  btn.disabled = true; btn.textContent = '⏳ Enregistrement...';
+  btn.disabled = true; btn.textContent = factureFile ? '⏳ Envoi de la facture...' : '⏳ Enregistrement...';
   var costNum = cost ? Number(cost) : 0;
-  db.collection('service_history').add({
-    client_uid: _dossierUid,
-    vehicle_label: _dossierVehicle,
-    date: date, time: time || '',
-    mechanic_id: mecId || '', mechanic_name: mecName || '',
-    location: location,
-    service_type: serviceType || '',
-    title: title,
-    cost: costNum,
-    saved: saved ? Number(saved) : 0,
-    note: note,
-    next_due_date: next || '',
-    created_by: (currentAdmin && currentAdmin.email) || '',
-    created_at: firebase.firestore.FieldValue.serverTimestamp()
+  uploadFactureFile(factureFile, 'factures/service_history/' + _dossierUid).then(function(facture){
+    btn.textContent = '⏳ Enregistrement...';
+    return db.collection('service_history').add({
+      client_uid: _dossierUid,
+      vehicle_label: _dossierVehicle,
+      date: date, time: time || '',
+      mechanic_id: mecId || '', mechanic_name: mecName || '',
+      location: location,
+      service_type: serviceType || '',
+      title: title,
+      cost: costNum,
+      saved: saved ? Number(saved) : 0,
+      note: note,
+      next_due_date: next || '',
+      facture_url: facture ? facture.url : null,
+      facture_name: facture ? facture.name : null,
+      created_by: (currentAdmin && currentAdmin.email) || '',
+      created_at: firebase.firestore.FieldValue.serverTimestamp()
+    });
   }).then(function(){
     // Le prix entré ici nourrit aussi la base de "vrais prix" du vérificateur
     // de prix du site (même collection, mêmes clés que BAREME_PRIX).
@@ -2405,7 +2437,8 @@ function saveDossierRecord(){
         created_at: firebase.firestore.FieldValue.serverTimestamp()
       }).catch(function(e){ console.log('price_checks non alimenté:', e.message); });
     }
-    ['d-title','d-cost','d-saved','d-note','d-next','d-time','d-location','d-mec-search'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
+    ['d-title','d-cost','d-saved','d-note','d-next','d-time','d-location','d-mec-search','d-facture'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; });
+    var fnameEl = document.getElementById('d-facture-name'); if(fnameEl) fnameEl.textContent = '';
     document.getElementById('d-service').value = '';
     document.getElementById('d-mec').innerHTML = dossierMecOptions();
     dossierOnServiceChange();
@@ -2414,6 +2447,26 @@ function saveDossierRecord(){
   }).catch(function(e){
     errEl.textContent = 'Erreur : '+e.message; errEl.style.display = 'block';
     btn.disabled = false; btn.textContent = '💾 Ajouter au dossier';
+  });
+}
+
+/* Joindre (ou remplacer) une facture sur un entretien déjà enregistré,
+   sans avoir à retaper toute la fiche. */
+function attachFactureToRecord(recordId, inputEl){
+  var file = inputEl.files[0];
+  if(!file) return;
+  var card = document.getElementById('facture-status-' + recordId);
+  if(card) card.textContent = '⏳ Envoi...';
+  uploadFactureFile(file, 'factures/service_history/' + _dossierUid).then(function(facture){
+    return db.collection('service_history').doc(recordId).update({
+      facture_url: facture.url,
+      facture_name: facture.name
+    });
+  }).then(function(){
+    loadDossierRecords();
+  }).catch(function(e){
+    if(card) card.textContent = '⚠️ ' + e.message;
+    else alert('Erreur : ' + e.message);
   });
 }
 
@@ -2688,6 +2741,7 @@ function leadCard(l){
     +"<div class='info-item'><div class='il'>Code réservation</div><div class='iv' style='color:var(--blue);font-weight:700'>"+(l.booking_code||"—")+"</div></div>"
     +(l.description?"<div class='info-item' style='grid-column:1/-1'><div class='il'>Description client</div><div class='iv'>"+l.description+"</div></div>":"")
     +"<div class='info-item'><div class='il'>Reçu le</div><div class='iv'>"+dt+"</div></div>"
+    +(l.facture_url?"<div class='info-item' style='grid-column:1/-1'><div class='il'>Facture</div><div class='iv'><a href='"+l.facture_url+"' target='_blank' rel='noopener' style='color:#0E9F6E;font-weight:700'>🧾 "+(l.facture_name||'Voir la facture')+"</a></div></div>":"")
     +"</div>"
     +"<div class='status-selector'><div class='status-selector-label'>Statut de la demande</div><div class='status-btns'>"+stBtns+"</div></div>"
     +"<div class='notes-section'><div class='notes-label'>Notes internes</div>"+notesHtml
@@ -2698,8 +2752,32 @@ function leadCard(l){
     +"<a href='sms:"+l.client_phone+"' class='abtn abtn-sms'>💬 SMS</a>"
     +"<a href='mailto:"+l.client_email+"' class='abtn abtn-email'>📧 Email</a>"
     +"<button class='abtn' style='background:#FFF7ED;border-color:#FDBA74;color:#C2410C;font-weight:700' onclick='openAssignModal(\""+l.id+"\",\"leads\")'>🔧 Assigner à un mécano</button>"
+    +"<label class='abtn' style='background:#F0FDF4;border-color:#86EFAC;color:#0E9F6E;font-weight:700;cursor:pointer'>🧾 "+(l.facture_url?"Remplacer la facture":"Joindre une facture")
+    +"<input type='file' accept='image/*,application/pdf' style='display:none' onchange='attachFactureToLead(\""+l.id+"\", this)'></label>"
     +"<button class='abtn abtn-del' onclick='deleteLead(\""+l.id+"\")'>🗑 Supprimer</button>"
     +"</div></div></div>";
+}
+
+/* Joindre (ou remplacer) une facture sur une demande de soumission. */
+function attachFactureToLead(leadId, inputEl){
+  var file = inputEl.files[0];
+  if(!file) return;
+  var lbl = inputEl.parentElement;
+  var prevTxt = lbl.firstChild.textContent;
+  lbl.firstChild.textContent = '⏳ Envoi...';
+  uploadFactureFile(file, 'factures/leads/' + leadId).then(function(facture){
+    return db.collection('leads').doc(leadId).update({
+      facture_url: facture.url,
+      facture_name: facture.name
+    }).then(function(){ return facture; });
+  }).then(function(facture){
+    var l = _leads.find(function(x){ return x.id===leadId; });
+    if(l){ l.facture_url = facture.url; l.facture_name = facture.name; }
+    renderLeads();
+  }).catch(function(e){
+    lbl.firstChild.textContent = prevTxt;
+    alert('Erreur : ' + e.message);
+  });
 }
 
 /* ══════════ MÉCANICIENS ══════════ */
