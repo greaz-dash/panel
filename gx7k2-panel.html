@@ -1894,6 +1894,7 @@ async function buildCRM(){
       if(acc.insurer) c.insurer = acc.insurer;
       if(acc.insurer_since) c.insurer_since = acc.insurer_since;
       if(v0.financed) c.financed = v0.financed;
+      if(v0.km) c.km = v0.km;
       if(!c.vehicle && vehicleStr) c.vehicle = vehicleStr;
     } else {
       // Compte créé directement, sans aucune demande ni RDV — c'est exactement
@@ -1907,7 +1908,7 @@ async function buildCRM(){
         rdvCount: 0, manual: false, hasAccount: true, uid: acc._uid,
         address: acc.address||'', birthdate: acc.birthdate||'',
         insurer: acc.insurer||'', insurer_since: acc.insurer_since||'',
-        financed: v0.financed||'',
+        financed: v0.financed||'', km: v0.km||'',
       };
     }
   });
@@ -2039,7 +2040,7 @@ function crmCard(c){
     +(c.hasAccount?" <span style='font-size:10px;font-weight:700;color:#0F2ACC;background:#EEF1FF;padding:1px 7px;border-radius:8px;vertical-align:middle'>✅ Compte Greaz</span>":"")
     +(c.hasAccount && c.rdvCount===0?" <span style='font-size:10px;font-weight:700;color:#92400E;background:#FEF3C7;padding:1px 7px;border-radius:8px;vertical-align:middle'>⚡ Inscrit, aucun RDV</span>":"")
     +"</div>"
-    +"<div class='card-meta'><span>"+(c.vehicle||'Véhicule non précisé')+"</span>"+((c.city||c.address)?"<span>· 📍 "+(c.address||c.city)+"</span>":"")+"</div></div>"
+    +"<div class='card-meta'><span>"+(c.vehicle||'Véhicule non précisé')+"</span>"+(c.km?"<span>· 📊 "+Number(c.km).toLocaleString('fr-CA')+" km</span>":"")+((c.city||c.address)?"<span>· 📍 "+(c.address||c.city)+"</span>":"")+"</div></div>"
     +"</div>"
     +"<div class='card-right'><span class='sbadge' style='background:#E6F6EF;color:#0B7D57'>"+c.rdvCount+" RDV</span></div>"
     +"</div>"
@@ -2050,6 +2051,7 @@ function crmCard(c){
     +"<div class='info-item'><div class='il'>Téléphone</div><div class='iv'>"+(c.phone?"<a href='tel:"+phoneClean+"'>"+c.phone+"</a>":"—")+"</div></div>"
     +"<div class='info-item'><div class='il'>Adresse</div><div class='iv'>"+(c.address||c.city||"—")+"</div></div>"
     +"<div class='info-item'><div class='il'>Véhicule</div><div class='iv'>"+(c.vehicle||"—")+"</div></div>"
+    +(c.km?"<div class='info-item'><div class='il'>Kilométrage</div><div class='iv'>"+Number(c.km).toLocaleString('fr-CA')+" km</div></div>":"")
     +(c.birthdate?"<div class='info-item'><div class='il'>Naissance</div><div class='iv'>"+c.birthdate+"</div></div>":"")
     +(c.insurer?"<div class='info-item'><div class='il'>Assureur</div><div class='iv'>"+c.insurer+(c.insurer_since?' · '+c.insurer_since:'')+"</div></div>":"")
     +(c.financed?"<div class='info-item'><div class='il'>Financement auto</div><div class='iv'>"+c.financed+"</div></div>":"")
