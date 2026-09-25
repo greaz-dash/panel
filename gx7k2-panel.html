@@ -2734,6 +2734,9 @@ function leadCard(l){
     +"<div class='info-item'><div class='il'>Courriel</div><div class='iv'><a href='mailto:"+l.client_email+"'>"+(l.client_email||"—")+"</a></div></div>"
     +"<div class='info-item'><div class='il'>Adresse</div><div class='iv'>"+(l.address||"—")+"</div></div>"
     +"<div class='info-item'><div class='il'>Véhicule</div><div class='iv'>"+(vehicle||"—")+"</div></div>"
+    +(l.vehicle_km?"<div class='info-item'><div class='il'>Kilométrage</div><div class='iv'>"+Number(l.vehicle_km).toLocaleString('fr-CA')+" km</div></div>":"")
+    +(l.buy_price?"<div class='info-item'><div class='il'>Prix "+(l.profile==='acheteur'?'demandé':'payé')+"</div><div class='iv' style='color:var(--blue);font-weight:700'>"+Number(l.buy_price).toLocaleString('fr-CA')+" $"+(l.pay_mode?" · "+(l.pay_mode==='comptant'?'comptant':'à crédit'):"")+"</div></div>":"")
+    +(l.est_total?"<div class='info-item'><div class='il'>Coût total prévisionnel</div><div class='iv'>"+Number(l.est_total).toLocaleString('fr-CA')+" $</div></div>":"")
     +(l.client_birthdate?"<div class='info-item'><div class='il'>Naissance</div><div class='iv'>"+l.client_birthdate+"</div></div>":"")
     +(l.client_insurer?"<div class='info-item'><div class='il'>Assureur</div><div class='iv'>"+l.client_insurer+(l.client_insurer_since?' · '+l.client_insurer_since:'')+"</div></div>":"")
     +(l.vehicle_financed?"<div class='info-item'><div class='il'>Financement auto</div><div class='iv'>"+l.vehicle_financed+"</div></div>":"")
