@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Greaz — Scan express</title>
+<meta name="description" content="Scan diagnostique OBD-II gratuit + mini-inspection visuelle, sur place.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234568D6'/%3E%3Ctext x='50' y='50' font-family='Arial,sans-serif' font-size='62' font-weight='800' fill='white' text-anchor='middle' dominant-baseline='central' letter-spacing='-3'%3EG%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<style>
+:root{
+  --ivory:#F7F5F1; --ivory2:#FFFFFF;
+  --blue:#3E6AE1; --blue2:#3457B2; --bluelt:#EDF2FE;
+  --mint:#00A862; --mintlt:#E4F7EE;
+  --peach:#F0803C; --peachlt:#FDEEE2;
+  --rose:#E85D6E; --roselt:#FCEAEC;
+  --lav:#7C6FE8; --lavlt:#EFEDFD;
+  --amber:#C99209; --amberlt:#FBF2D9;
+  --ink:#1E2128; --muted:#63666E; --faint:#9CA0A8;
+  --line:#ECE9E3; --line2:#E0DCD3;
+  --display:'Space Grotesk',sans-serif; --body:'Inter',sans-serif; --data:'JetBrains Mono',monospace;
+  --ease:cubic-bezier(.22,1,.36,1); --spring:cubic-bezier(.34,1.56,.64,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--body);background:var(--ivory);color:var(--ink);line-height:1.6;-webkit-font-smoothing:antialiased;padding-bottom:3rem}
+.wrap{max-width:600px;margin:0 auto;padding:0 16px}
+.top{text-align:center;padding:2.2rem 0 1.3rem}
+.logo-badge{display:inline-flex;align-items:center;gap:9px;background:#fff;border-radius:40px;padding:9px 18px 9px 11px;box-shadow:0 6px 22px rgba(30,33,40,.07)}
+.logo-mark{width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,var(--blue),var(--lav));color:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:1.05rem}
+.logo-txt{font-family:var(--display);font-weight:700;font-size:1.25rem;letter-spacing:-.02em}
+.logo-txt span{color:var(--blue)}
+.top-title{font-family:var(--display);font-size:1.35rem;font-weight:700;letter-spacing:-.025em;margin-top:10px}
+.top-sub{font-size:13px;color:var(--muted);font-weight:500;margin-top:4px}
+.card{background:#fff;border-radius:22px;padding:22px;box-shadow:0 8px 30px rgba(30,33,40,.06);margin-bottom:14px}
+.card h2{font-family:var(--display);font-size:15.5px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.step-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--bluelt);color:var(--blue);font-size:12px;font-weight:700;flex-shrink:0}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.fld{margin-bottom:12px}
+.fld label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin-bottom:6px}
+.fld input{width:100%;padding:13px 14px;background:var(--ivory);border:2px solid transparent;border-radius:13px;font-size:15px;font-family:inherit;font-weight:500;color:var(--ink);outline:none;transition:border-color .2s,background .2s}
+.fld input:focus{border-color:var(--blue);background:#fff}
+.fld input::placeholder{color:var(--faint);font-weight:400}
+.btn{width:100%;background:linear-gradient(135deg,var(--blue),var(--lav));color:#fff;border:none;padding:16px;border-radius:15px;font-family:var(--display);font-weight:600;font-size:15px;cursor:pointer;box-shadow:0 8px 22px rgba(62,106,225,.3);transition:transform .2s var(--spring);display:flex;align-items:center;justify-content:center;gap:8px}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.45;cursor:default;box-shadow:none}
+.btn-dark{background:var(--ink);box-shadow:0 8px 22px rgba(30,33,40,.22)}
+.btn-mint{background:linear-gradient(135deg,var(--mint),#00c278);box-shadow:0 8px 22px rgba(0,168,98,.28)}
+.btn-ghost{background:var(--ivory);color:var(--ink);box-shadow:none;border:2px solid var(--line)}
+.btn-spin{width:15px;height:15px;border:2.5px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.status-row{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;margin-bottom:14px}
+.status-dot{width:9px;height:9px;border-radius:50%;background:#C7C9CE;flex-shrink:0}
+.status-dot.on{background:var(--mint)}
+.status-dot.err{background:var(--rose)}
+.status-dot.busy{background:var(--amber);animation:blink 1s ease-in-out infinite}
+@keyframes blink{50%{opacity:.3}}
+.err-box{background:var(--roselt);color:#B3261E;padding:11px 13px;border-radius:12px;font-size:12.5px;margin-bottom:12px;display:none;line-height:1.5}
+.err-box.show{display:block}
+.tech-toggle{font-size:12px;color:var(--faint);cursor:pointer;text-decoration:underline;margin-bottom:8px;display:inline-block}
+#tech-log{display:none;background:#14161B;color:#8FE3B0;font-family:var(--data);font-size:11px;padding:10px;border-radius:10px;max-height:150px;overflow-y:auto;white-space:pre-wrap;line-height:1.6;margin-bottom:10px}
+#tech-log.show{display:block}
+.veh-hero{background:linear-gradient(135deg,#2A2E38,#1E2128);border-radius:22px;padding:22px;color:#fff;margin-bottom:16px;position:relative;overflow:hidden}
+.veh-hero::after{content:'🔧';position:absolute;bottom:-10px;right:10px;font-size:4.5rem;opacity:.10}
+.veh-hero-in{position:relative;z-index:1}
+.veh-hero-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.5);margin-bottom:6px;font-weight:600}
+.veh-name{font-family:var(--display);font-size:1.35rem;font-weight:700;letter-spacing:-.02em}
+.veh-summary{margin-top:12px;display:inline-flex;align-items:center;gap:7px;border-radius:20px;padding:7px 15px;font-size:12.5px;font-weight:700}
+.veh-summary.ok{background:rgba(0,168,98,.22);color:#5FE3A1}
+.veh-summary.warn{background:rgba(201,146,9,.22);color:#F2C14E}
+.veh-summary.crit{background:rgba(232,93,110,.24);color:#FF8B99}
+.live-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px}
+.live-tile{background:rgba(255,255,255,.08);border-radius:12px;padding:10px;text-align:center}
+.live-tile .v{font-family:var(--data);font-weight:700;font-size:15px;color:#fff}
+.live-tile .l{font-size:9.5px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.03em;margin-top:2px}
+.dtc-item{border-bottom:1px solid var(--line);padding:13px 0}
+.dtc-item:last-child{border-bottom:none}
+.dtc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;cursor:pointer}
+.dtc-code{font-family:var(--data);font-size:11.5px;font-weight:700;color:var(--faint);letter-spacing:.02em}
+.dtc-name{font-size:14px;font-weight:700;color:var(--ink);margin-top:2px}
+.dtc-cost{font-size:14px;font-weight:700;color:var(--blue);white-space:nowrap;text-align:right}
+.dtc-badge{display:inline-block;margin-top:5px;font-size:9.5px;font-weight:700;letter-spacing:.04em;border-radius:20px;padding:3px 9px;text-align:right}
+.dtc-badge.critique{color:var(--rose);background:var(--roselt)}
+.dtc-badge.moyen{color:var(--amber);background:var(--amberlt)}
+.dtc-badge.mineur{color:var(--mint);background:var(--mintlt)}
+.dtc-why{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.55;display:none}
+.dtc-why.show{display:block}
+.dtc-none{color:var(--mint);font-weight:700;font-size:14px;padding:6px 0;display:flex;align-items:center;gap:8px}
+.check-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--line)}
+.check-item:last-child{border-bottom:none}
+.check-lbl{font-size:13.5px;font-weight:600;flex:1}
+.check-btn{flex-shrink:0;min-width:96px;text-align:center;border:2px solid var(--line);background:var(--ivory);color:var(--faint);border-radius:20px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;font-family:inherit}
+.check-btn.ok{background:var(--mintlt);border-color:var(--mint);color:#00854E}
+.check-btn.attn{background:var(--amberlt);border-color:var(--amber);color:#8A6A07}
+.result-wrap{display:none}
+.result-wrap.show{display:block}
+.action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.action-row .btn{flex:1;min-width:150px}
+.note-hint{font-size:12px;color:var(--muted);line-height:1.5;margin-top:10px}
+.badge-internal{display:inline-block;background:var(--peachlt);color:#B35A1E;font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:20px;margin-bottom:10px}
+.send-modal-backdrop{display:none;position:fixed;inset:0;background:rgba(30,33,40,.55);backdrop-filter:blur(3px);z-index:200;align-items:center;justify-content:center;padding:18px}
+.send-modal-backdrop.open{display:flex}
+.send-modal{background:#fff;border-radius:24px;padding:26px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(30,33,40,.3);position:relative}
+.send-modal-close{position:absolute;top:14px;right:14px;width:28px;height:28px;border-radius:50%;background:var(--ivory);border:none;font-size:14px;color:var(--muted);cursor:pointer}
+.send-modal h3{font-family:var(--display);font-size:1.1rem;font-weight:700;margin-bottom:6px;padding-right:20px}
+.send-modal p{font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5}
+#scan-send-status{font-size:12.5px;font-weight:600;margin-top:8px;min-height:16px}
+#scan-send-status.ok{color:var(--mint)}
+#scan-send-status.err{color:var(--rose)}
+#scan-save-status{font-size:12.5px;font-weight:600;margin-top:10px;min-height:16px}
+#scan-save-status.ok{color:var(--mint)}
+#scan-save-status.err{color:var(--rose)}
+</style>
+</head>
+<body>
+
+<div class="send-modal-backdrop" id="scan-send-backdrop" onclick="if(event.target===this) closeScanSendModal()">
+  <div class="send-modal">
+    <button type="button" class="send-modal-close" onclick="closeScanSendModal()">✕</button>
+    <h3>📧 Envoyer le rapport</h3>
+    <p>Le client reçoit le résumé complet — codes expliqués + résultat de l'inspection visuelle — directement dans sa boîte courriel.</p>
+    <div class="fld">
+      <label>Courriel du client</label>
+      <input type="email" id="scan-send-email" placeholder="nom@courriel.com">
+    </div>
+    <button type="button" class="btn" id="scan-send-btn" onclick="sendScanEmail()">Envoyer <span>→</span></button>
+    <div id="scan-send-status"></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="top">
+    <div class="logo-badge">
+      <div class="logo-mark">G</div>
+      <div class="logo-txt">Greaz<span>·</span>Scan</div>
+    </div>
+    <div class="top-title">🔍 Scan express + mini-inspection</div>
+    <div class="top-sub">Diagnostic électronique gratuit, sur place, en 3 minutes.</div>
+  </div>
+
+  <!-- ═══ Étape 1 : infos client / véhicule ═══ -->
+  <div class="card">
+    <h2><span class="step-num">1</span> Client &amp; véhicule</h2>
+    <div class="row2">
+      <div class="fld"><label>Nom du client</label><input id="sc-name" placeholder="Prénom Nom"></div>
+      <div class="fld"><label>Téléphone</label><input id="sc-phone" inputmode="tel" placeholder="514 555-1234"></div>
+    </div>
+    <div class="fld"><label>Courriel</label><input id="sc-email" type="email" inputmode="email" placeholder="client@courriel.com"></div>
+    <div class="row3">
+      <div class="fld"><label>Marque</label><input id="sc-make" placeholder="Honda"></div>
+      <div class="fld"><label>Modèle</label><input id="sc-model" placeholder="Civic"></div>
+      <div class="fld"><label>Année</label><input id="sc-year" inputmode="numeric" placeholder="2019"></div>
+    </div>
+    <div class="fld"><label>Kilométrage</label><input id="sc-km" inputmode="numeric" placeholder="87000"></div>
+  </div>
+
+  <!-- ═══ Étape 2 : connexion + scan ═══ -->
+  <div class="card">
+    <h2><span class="step-num">2</span> Connexion &amp; scan</h2>
+    <div class="status-row"><span class="status-dot" id="sc-dot"></span><span id="sc-status-txt">Pas connecté</span></div>
+    <div class="err-box" id="sc-err"></div>
+    <span class="tech-toggle" onclick="toggleTechLog()">Voir le détail technique</span>
+    <div id="tech-log"></div>
+    <button class="btn" id="btn-connect" onclick="connectAndInit()">🔌 Connecter le dongle</button>
+    <button class="btn btn-dark" id="btn-scan" onclick="runScan()" disabled style="margin-top:10px">▶️ Lancer le scan</button>
+    <div class="note-hint">Le dongle doit être branché dans le port OBD-II du véhicule, contact mis (pas besoin de démarrer le moteur pour lire les codes).</div>
+  </div>
+
+  <!-- ═══ Résultats ═══ -->
+  <div class="result-wrap" id="result-wrap">
+    <div class="veh-hero">
+      <div class="veh-hero-in">
+        <div class="veh-hero-label">Véhicule scanné</div>
+        <div class="veh-name" id="rv-veh-name">—</div>
+        <div id="rv-summary"></div>
+        <div class="live-grid" id="rv-live"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📟 Codes détectés</h2>
+      <div id="dtc-list"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Étape 3 : check-list visuelle ═══ -->
+  <div class="card">
+    <h2><span class="step-num">3</span> Mini-inspection visuelle</h2>
+    <div id="checklist"></div>
+    <div class="note-hint">Clique chaque item : gris = pas vérifié → vert = correct → orange = à surveiller.</div>
+  </div>
+
+  <!-- ═══ Étape 4 : sauvegarder / envoyer ═══ -->
+  <div class="card">
+    <h2><span class="step-num">4</span> Terminer</h2>
+    <div class="action-row">
+      <button class="btn btn-mint" id="btn-save" onclick="saveScanLead()">💾 Sauvegarder chez Greaz</button>
+      <button class="btn btn-ghost" id="btn-open-send" onclick="openScanSendModal()">📧 Envoyer le rapport</button>
+    </div>
+    <div id="scan-save-status"></div>
+    <div class="note-hint">« Sauvegarder » crée automatiquement une fiche dans ton répertoire de demandes (dashboard) — tu pourras faire le suivi comme n'importe quel lead.</div>
+  </div>
+
+</div>
+
+<script>
+// ═══════════ FIREBASE (même projet que le reste de Greaz) ═══════════
+var _db = null;
+try {
+  firebase.initializeApp({
+    apiKey:"AIzaSyAbvCBM1J-LL5B5_v5rqjbGcM8geufmbxs",
+    authDomain:"greaz-4b00c.firebaseapp.com",
+    projectId:"greaz-4b00c",
+    storageBucket:"greaz-4b00c.firebasestorage.app",
+    messagingSenderId:"165170790975",
+    appId:"1:165170790975:web:38fe20428046e6328b6e8a"
+  });
+  _db = firebase.firestore();
+} catch(e){}
+
+// ═══════════ EMAILJS (même service que le reste de Greaz) ═══════════
+try { emailjs.init({ publicKey: "wVQqsSCjIEvcucyEc" }); } catch(e){}
+var EJS_SERVICE = "service_2v5zpll";
+// ⚠️ À remplacer par l'ID du template une fois créé dans EmailJS (voir email-template-scan-obd.html)
+var EJS_TEMPLATE_SCAN = "PASTE_TEMPLATE_ID_ICI";
+
+// ═══════════ TABLE DES CODES DTC (OBD-II génériques) ═══════════
+// Explication en français simple + niveau d'urgence + fourchette de coût
+// Québec (diagnostic + réparation la plus probable). Liste non exhaustive —
+// dtcLookup() retombe sur une explication générique par préfixe si le code
+// exact n'est pas dans la table. Chaque entrée est un objet complet (pas de
+// raccourci positionnel) pour éviter toute confusion entre les champs.
+var DTC_DB = {
+  P0100:{ fr:'Débitmètre d\'air (MAF) — circuit', why:'Le capteur qui mesure l\'air entrant envoie un signal incohérent — conduite saccadée, essence en trop.', urg:'moyen', min:150, max:350 },
+  P0101:{ fr:'Débitmètre d\'air (MAF) — hors plage', why:'Souvent un filtre à air sale ou le capteur encrassé.', urg:'moyen', min:80, max:300 },
+  P0102:{ fr:'Débitmètre d\'air (MAF) — signal bas', why:'Signal trop faible du capteur d\'air — vérifier branchement et filtre.', urg:'moyen', min:150, max:350 },
+  P0103:{ fr:'Débitmètre d\'air (MAF) — signal haut', why:'Signal trop fort du capteur d\'air.', urg:'moyen', min:150, max:350 },
+  P0110:{ fr:'Capteur de température d\'air d\'admission', why:'Signal incohérent — impact mineur sur la conduite.', urg:'mineur', min:100, max:250 },
+  P0113:{ fr:'Capteur de température d\'air d\'admission — signal haut', why:'Le capteur indique un air anormalement chaud.', urg:'mineur', min:100, max:250 },
+  P0116:{ fr:'Capteur de température du liquide de refroidissement — hors plage', why:'Peut fausser le réchauffement moteur et la consommation.', urg:'moyen', min:150, max:300 },
+  P0117:{ fr:'Capteur température liquide refroidissement — signal bas', why:'Peut fausser le calcul du réchauffement moteur.', urg:'moyen', min:150, max:300 },
+  P0118:{ fr:'Capteur température liquide refroidissement — signal haut', why:'Peut fausser le calcul du réchauffement moteur.', urg:'moyen', min:150, max:300 },
+  P0121:{ fr:'Capteur de position du papillon des gaz — hors plage', why:'Peut causer une accélération irrégulière.', urg:'moyen', min:200, max:400 },
+  P0128:{ fr:'Thermostat — le moteur n\'atteint pas sa température normale', why:'Le moteur roule "froid" plus longtemps — use plus d\'essence, plus d\'usure.', urg:'moyen', min:150, max:350 },
+  P0130:{ fr:'Capteur d\'oxygène (sonde O2) — circuit', why:'Mauvais dosage air/essence possible — plus de pollution, plus de conso.', urg:'moyen', min:150, max:400 },
+  P0131:{ fr:'Sonde O2 — signal bas', why:'Peut fausser le dosage air/essence.', urg:'moyen', min:150, max:400 },
+  P0132:{ fr:'Sonde O2 — signal haut', why:'Peut fausser le dosage air/essence.', urg:'moyen', min:150, max:400 },
+  P0133:{ fr:'Sonde O2 — réponse trop lente', why:'La sonde vieillit — moins précise pour ajuster le mélange.', urg:'moyen', min:150, max:400 },
+  P0135:{ fr:'Sonde O2 — circuit de chauffage', why:'La sonde met trop de temps à chauffer — surconsommation.', urg:'moyen', min:150, max:350 },
+  P0136:{ fr:'Sonde O2 (banc 1, capteur 2) — circuit', why:'Peut affecter l\'efficacité du convertisseur catalytique.', urg:'moyen', min:150, max:350 },
+  P0141:{ fr:'Sonde O2 (banc 1, capteur 2) — chauffage', why:'La sonde met trop de temps à chauffer.', urg:'moyen', min:150, max:350 },
+  P0171:{ fr:'Mélange air/essence trop pauvre (banc 1)', why:'Trop d\'air ou pas assez d\'essence — souvent une fuite d\'admission ou capteur encrassé.', urg:'moyen', min:150, max:450 },
+  P0172:{ fr:'Mélange air/essence trop riche (banc 1)', why:'Trop d\'essence — mauvaise conso, dépôts, odeur.', urg:'moyen', min:150, max:450 },
+  P0174:{ fr:'Mélange air/essence trop pauvre (banc 2)', why:'Trop d\'air ou pas assez d\'essence — souvent une fuite d\'admission ou capteur encrassé.', urg:'moyen', min:150, max:450 },
+  P0175:{ fr:'Mélange air/essence trop riche (banc 2)', why:'Trop d\'essence — mauvaise conso, dépôts, odeur.', urg:'moyen', min:150, max:450 },
+  P0217:{ fr:'Surchauffe du moteur', why:'⚠ Arrête de conduire si le voyant température est allumé — risque de dommage moteur sérieux.', urg:'critique', min:null, max:null },
+  P0230:{ fr:'Circuit du relais de la pompe à essence', why:'Risque de perte de puissance ou calage.', urg:'critique', min:150, max:400 },
+  P0300:{ fr:'Ratés d\'allumage multiples/aléatoires', why:'Le moteur saute des explosions de façon irrégulière — peut endommager le convertisseur catalytique si ça persiste.', urg:'critique', min:150, max:600 },
+  P0301:{ fr:'Raté d\'allumage — cylindre 1', why:'Souvent une bougie ou une bobine d\'allumage à changer.', urg:'critique', min:150, max:450 },
+  P0302:{ fr:'Raté d\'allumage — cylindre 2', why:'Souvent une bougie ou une bobine d\'allumage à changer.', urg:'critique', min:150, max:450 },
+  P0303:{ fr:'Raté d\'allumage — cylindre 3', why:'Souvent une bougie ou une bobine d\'allumage à changer.', urg:'critique', min:150, max:450 },
+  P0304:{ fr:'Raté d\'allumage — cylindre 4', why:'Souvent une bougie ou une bobine d\'allumage à changer.', urg:'critique', min:150, max:450 },
+  P0305:{ fr:'Raté d\'allumage — cylindre 5', why:'Souvent une bougie ou une bobine d\'allumage à changer.', urg:'critique', min:150, max:450 },
+  P0306:{ fr:'Raté d\'allumage — cylindre 6', why:'Souvent une bougie ou une bobine d\'allumage à changer.', urg:'critique', min:150, max:450 },
+  P0307:{ fr:'Raté d\'allumage — cylindre 7', why:'Souvent une bougie ou une bobine d\'allumage à changer.', urg:'critique', min:150, max:450 },
+  P0308:{ fr:'Raté d\'allumage — cylindre 8', why:'Souvent une bougie ou une bobine d\'allumage à changer.', urg:'critique', min:150, max:450 },
+  P0325:{ fr:'Capteur de cognement (knock sensor)', why:'Le moteur ne détecte plus bien le cognement — peut affecter la puissance.', urg:'moyen', min:150, max:350 },
+  P0335:{ fr:'Capteur de position du vilebrequin', why:'Peut causer un calage ou un refus de démarrer — à faire vérifier rapidement.', urg:'critique', min:200, max:500 },
+  P0340:{ fr:'Capteur de position de l\'arbre à cames', why:'Peut affecter le démarrage et la puissance.', urg:'critique', min:200, max:450 },
+  P0401:{ fr:'Vanne EGR — débit insuffisant', why:'Plus de pollution et de cliquetis moteur possible.', urg:'moyen', min:150, max:400 },
+  P0402:{ fr:'Vanne EGR — débit excessif', why:'Peut causer un ralenti irrégulier.', urg:'moyen', min:150, max:400 },
+  P0420:{ fr:'Efficacité du convertisseur catalytique (banc 1) sous le seuil', why:'Le "pot catalytique" ne filtre plus assez bien — coûteux à remplacer, mais souvent causé par un problème en amont (sonde, ratés) qu\'il vaut la peine de vérifier d\'abord.', urg:'moyen', min:800, max:2500 },
+  P0430:{ fr:'Efficacité du convertisseur catalytique (banc 2) sous le seuil', why:'Même chose que P0420, mais sur l\'autre banc du moteur.', urg:'moyen', min:800, max:2500 },
+  P0440:{ fr:'Système d\'évaporation des vapeurs d\'essence (EVAP) — anomalie générale', why:'Souvent juste le bouchon du réservoir mal vissé.', urg:'mineur', min:20, max:250 },
+  P0441:{ fr:'Système EVAP — purge incorrecte', why:'Peu d\'impact sur la conduite, à surveiller.', urg:'mineur', min:80, max:300 },
+  P0442:{ fr:'Système EVAP — petite fuite', why:'Souvent le bouchon d\'essence ou un boyau fissuré.', urg:'mineur', min:80, max:250 },
+  P0446:{ fr:'Système EVAP — circuit de ventilation bloqué', why:'Un boyau ou une valve du système d\'évaporation est bloqué.', urg:'mineur', min:100, max:300 },
+  P0455:{ fr:'Système EVAP — grosse fuite (souvent le bouchon d\'essence)', why:'Vérifie le bouchon en premier — ça règle le problème 8 fois sur 10.', urg:'mineur', min:20, max:200 },
+  P0456:{ fr:'Système EVAP — très petite fuite', why:'Souvent un joint ou un boyau à resserrer/remplacer.', urg:'mineur', min:80, max:250 },
+  P0500:{ fr:'Capteur de vitesse du véhicule', why:'Peut affecter le régulateur de vitesse et les changements de vitesse.', urg:'moyen', min:150, max:350 },
+  P0505:{ fr:'Système de régulation du ralenti', why:'Peut causer un ralenti instable.', urg:'moyen', min:150, max:350 },
+  P0506:{ fr:'Ralenti trop bas', why:'Risque de caler à l\'arrêt.', urg:'moyen', min:150, max:350 },
+  P0507:{ fr:'Ralenti trop haut', why:'Consommation plus élevée à l\'arrêt.', urg:'moyen', min:150, max:350 },
+  P0562:{ fr:'Tension système basse', why:'Batterie faible ou alternateur qui charge mal — à vérifier avant que ça lâche.', urg:'critique', min:150, max:500 },
+  P0563:{ fr:'Tension système haute', why:'Alternateur qui surcharge — peut endommager la batterie.', urg:'critique', min:200, max:600 },
+  P0700:{ fr:'Défaut détecté par le module de transmission', why:'Un scan spécifique à la transmission est nécessaire pour préciser le problème exact.', urg:'critique', min:null, max:null },
+  P0705:{ fr:'Capteur de position du sélecteur de vitesse', why:'Peut empêcher certains modes de transmission de fonctionner.', urg:'moyen', min:150, max:400 },
+  P0715:{ fr:'Capteur de vitesse d\'entrée de la transmission', why:'Peut causer des changements de vitesse brusques ou absents.', urg:'critique', min:300, max:700 },
+  P0720:{ fr:'Capteur de vitesse de sortie de la transmission', why:'Peut causer des changements de vitesse brusques ou absents.', urg:'critique', min:300, max:700 },
+  P0740:{ fr:'Convertisseur de couple — embrayage', why:'Peut causer des vibrations ou une perte d\'efficacité à haute vitesse.', urg:'critique', min:300, max:900 },
+  U0100:{ fr:'Perte de communication avec l\'ordinateur moteur (ECM/PCM)', why:'Souvent un fil débranché, un fusible, ou une batterie très faible.', urg:'critique', min:null, max:null },
+  U0101:{ fr:'Perte de communication avec le module de transmission', why:'Souvent un fil débranché, un fusible, ou une batterie très faible.', urg:'critique', min:null, max:null },
+  U0121:{ fr:'Perte de communication avec le module ABS', why:'⚠ Peut affecter le freinage — à faire vérifier rapidement.', urg:'critique', min:null, max:null }
+};
+
+function dtcCostLabel(min, max){
+  if(min == null || max == null) return 'Diagnostic requis';
+  return Math.round(min).toLocaleString('fr-CA') + ' – ' + Math.round(max).toLocaleString('fr-CA') + ' $';
+}
+function dtcLookup(code){
+  var hit = DTC_DB[code];
+  if(hit) return { code:code, fr:hit.fr, why:hit.why||'Consulte un mécano pour préciser la cause exacte.', urg:hit.urg, min:hit.min, max:hit.max };
+  var letter = code.charAt(0);
+  var map = {
+    P: { fr:'Code moteur / émissions (générique)', why:'Ce code touche un système du moteur ou du contrôle des émissions. Le code exact n\'est pas dans notre table — un diagnostic complet chez un mécano va préciser la cause.', urg:'moyen' },
+    C: { fr:'Code châssis (souvent freins/direction/stabilité)', why:'Ce type de code touche souvent des systèmes liés à la sécurité (ABS, contrôle de stabilité, direction assistée). À faire vérifier rapidement.', urg:'critique' },
+    B: { fr:'Code carrosserie (confort/électronique embarquée)', why:'Touche souvent des systèmes comme les coussins gonflables, la climatisation ou les vitres électriques.', urg:'moyen' },
+    U: { fr:'Code réseau / communication entre modules', why:'Un des ordinateurs de bord ne communique plus correctement avec les autres — souvent un problème de câblage, de fusible ou de batterie.', urg:'critique' }
+  };
+  var m = map[letter] || map.P;
+  return { code:code, fr:m.fr, why:m.why, urg:m.urg, min:null, max:null };
+}
+
+// ═══════════ CHECK-LIST VISUELLE ═══════════
+var CHECKLIST_ITEMS = [
+  'Pneus (usure et pression)',
+  'Plaquettes de frein (visuel)',
+  'Niveau du liquide de frein',
+  'Niveau du liquide de refroidissement',
+  'Niveau et couleur de l\'huile moteur',
+  'Essuie-glaces',
+  'Feux (avant, arrière, freins)',
+  'Bornes de la batterie',
+  'Courroies visibles',
+  'Fuites sous le véhicule'
+];
+var _checklistState = CHECKLIST_ITEMS.map(function(label){ return { label:label, status:'' }; });
+
+function renderChecklist(){
+  var html = _checklistState.map(function(item, i){
+    var cls = item.status === 'ok' ? 'ok' : (item.status === 'attn' ? 'attn' : '');
+    var txt = item.status === 'ok' ? '✓ Correct' : (item.status === 'attn' ? '⚠ À surveiller' : 'Pas vérifié');
+    return '<div class="check-item"><div class="check-lbl">'+item.label+'</div>'
+      + '<button type="button" class="check-btn '+cls+'" onclick="cycleCheck('+i+')">'+txt+'</button></div>';
+  }).join('');
+  document.getElementById('checklist').innerHTML = html;
+}
+function cycleCheck(i){
+  var order = ['', 'ok', 'attn'];
+  var cur = order.indexOf(_checklistState[i].status);
+  _checklistState[i].status = order[(cur + 1) % order.length];
+  renderChecklist();
+}
+renderChecklist();
+
+// ═══════════ CONNEXION BLE — dongles ELM327 (Veepeak et clones BLE génériques) ═══════════
+var SERVICE_UUIDS = ['0000fff0-0000-1000-8000-00805f9b34fb','0000ffe0-0000-1000-8000-00805f9b34fb'];
+var device, writeChar, notifyChar;
+var rxBuffer = '';
+var pendingResolve = null;
+var lastResult = null;
+
+function techLog(msg){
+  var el = document.getElementById('tech-log');
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+function toggleTechLog(){
+  document.getElementById('tech-log').classList.toggle('show');
+}
+function setStatus(txt, cls){
+  document.getElementById('sc-status-txt').textContent = txt;
+  document.getElementById('sc-dot').className = 'status-dot' + (cls ? ' '+cls : '');
+}
+function showErr(msg){
+  var e = document.getElementById('sc-err');
+  if(!msg){ e.className = 'err-box'; e.textContent=''; return; }
+  e.textContent = msg;
+  e.className = 'err-box show';
+}
+
+function onNotify(e){
+  var value = e.target.value;
+  var text = new TextDecoder().decode(value);
+  rxBuffer += text;
+  if(rxBuffer.indexOf('>') !== -1 && pendingResolve){
+    var resp = rxBuffer;
+    rxBuffer = '';
+    var r = pendingResolve; pendingResolve = null;
+    r(resp);
+  }
+}
+function sendCmd(cmd, waitMs){
+  return new Promise(function(resolve){
+    rxBuffer = '';
+    pendingResolve = resolve;
+    var data = new TextEncoder().encode(cmd + '\r');
+    var writeP = writeChar.properties.writeWithoutResponse
+      ? writeChar.writeValueWithoutResponse(data)
+      : writeChar.writeValue(data);
+    writeP.catch(function(err){ techLog('⚠ erreur écriture "'+cmd+'": '+err.message); });
+    setTimeout(function(){
+      if(pendingResolve){
+        var r = pendingResolve; pendingResolve = null;
+        r(rxBuffer || '(pas de réponse)');
+      }
+    }, waitMs || 1800);
+  });
+}
+
+async function connectAndInit(){
+  showErr('');
+  var btn = document.getElementById('btn-connect');
+  btn.disabled = true;
+  try {
+    if(!navigator.bluetooth){
+      throw new Error('Ce navigateur ne supporte pas le Bluetooth web. Utilise Chrome sur la tablette Android — jamais Safari/iPhone.');
+    }
+    setStatus('Recherche du dongle…', 'busy');
+    device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: SERVICE_UUIDS });
+    techLog('Appareil choisi : ' + (device.name || '(sans nom)'));
+    setStatus('Connexion…', 'busy');
+    var server = await device.gatt.connect();
+    var service = null;
+    for(var i=0;i<SERVICE_UUIDS.length;i++){
+      try { service = await server.getPrimaryService(SERVICE_UUIDS[i]); break; } catch(e){}
+    }
+    if(!service) throw new Error('Le service OBD (FFF0/FFE0) n\'a pas été trouvé sur ce dongle.');
+    var chars = await service.getCharacteristics();
+    chars.forEach(function(c){
+      if(c.properties.notify || c.properties.indicate) notifyChar = c;
+      if(c.properties.write || c.properties.writeWithoutResponse) writeChar = c;
+    });
+    if(!writeChar || !notifyChar) throw new Error('Caractéristiques lecture/écriture introuvables sur ce dongle.');
+    await notifyChar.startNotifications();
+    notifyChar.addEventListener('characteristicvaluechanged', onNotify);
+    techLog('✓ Connecté — initialisation ELM327…');
+    await sendCmd('ATZ', 1800);
+    await sendCmd('ATE0');
+    await sendCmd('ATL0');
+    await sendCmd('ATS0');
+    await sendCmd('ATH0');
+    var proto = await sendCmd('ATSP0');
+    techLog('✓ Prêt (' + proto.replace(/[\r\n>]/g,' ').trim() + ')');
+    setStatus('Connecté ✓', 'on');
+    document.getElementById('btn-scan').disabled = false;
+    btn.textContent = 'Connecté ✓';
+  } catch(err){
+    setStatus('Erreur de connexion', 'err');
+    showErr(err.message);
+    techLog('✗ ' + err.message);
+    btn.disabled = false;
+  }
+}
+
+function parseDTCs(raw){
+  var clean = raw.replace(/SEARCHING\.\.\./gi,' ').replace(/[\r\n>]/g,' ').trim();
+  var bytes = clean.split(/\s+/).filter(function(b){ return /^[0-9A-Fa-f]{2}$/.test(b); });
+  var start = -1;
+  for(var i=0;i<bytes.length;i++){ if(bytes[i].toUpperCase()==='43'){ start = i; break; } }
+  if(start === -1) return [];
+  var payload = bytes.slice(start+1);
+  var LETTERS = ['P','C','B','U'];
+  var codes = [];
+  for(var j=0;j+1<payload.length;j+=2){
+    var b1 = parseInt(payload[j],16), b2 = parseInt(payload[j+1],16);
+    if(isNaN(b1) || isNaN(b2)) continue;
+    if(b1===0 && b2===0) continue;
+    var letter = LETTERS[(b1>>6)&0x3];
+    var d1 = (b1>>4)&0x3;
+    var d2 = (b1&0xF).toString(16).toUpperCase();
+    var d3 = ((b2>>4)&0xF).toString(16).toUpperCase();
+    var d4 = (b2&0xF).toString(16).toUpperCase();
+    codes.push(letter + d1 + d2 + d3 + d4);
+  }
+  return codes;
+}
+function extractBytesAfter(raw, header){
+  var clean = raw.replace(/[\r\n>]/g,' ').trim().toUpperCase();
+  var bytes = clean.split(/\s+/).filter(function(b){ return /^[0-9A-F]{2}$/.test(b); });
+  var hParts = header.split(' ');
+  for(var i=0;i+hParts.length<=bytes.length;i++){
+    var match = true;
+    for(var k=0;k<hParts.length;k++){ if(bytes[i+k] !== hParts[k]){ match=false; break; } }
+    if(match) return bytes.slice(i+hParts.length);
+  }
+  return null;
+}
+
+async function runScan(){
+  document.getElementById('result-wrap').classList.remove('show');
+  document.getElementById('btn-scan').disabled = true;
+  techLog('— Scan en cours —');
+
+  await sendCmd('0100', 1500);
+  var dtcRaw = await sendCmd('03', 2500);
+  techLog('DTC brut: ' + dtcRaw.replace(/[\r\n>]/g,' ').trim());
+  var rawCodes = parseDTCs(dtcRaw);
+  var codes = rawCodes.map(dtcLookup);
+
+  var rpmRaw = await sendCmd('010C', 1500);
+  var rpmBytes = extractBytesAfter(rpmRaw, '41 0C');
+  var rpm = rpmBytes ? Math.round(((parseInt(rpmBytes[0],16)*256)+parseInt(rpmBytes[1],16))/4) : null;
+
+  var coolantRaw = await sendCmd('0105', 1500);
+  var coolantBytes = extractBytesAfter(coolantRaw, '41 05');
+  var coolant = coolantBytes ? (parseInt(coolantBytes[0],16) - 40) : null;
+
+  var voltRaw = await sendCmd('ATRV', 1200);
+  var voltMatch = voltRaw.match(/(\d+\.?\d*)\s*V/i);
+  var volt = voltMatch ? voltMatch[1] : null;
+
+  lastResult = { codes: codes, rpm: rpm, coolant: coolant, volt: volt, raw: dtcRaw };
+  techLog('— Scan terminé —');
+  renderResults();
+  document.getElementById('btn-scan').disabled = false;
+  document.getElementById('result-wrap').classList.add('show');
+  document.getElementById('result-wrap').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function escapeHtml(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+  });
+}
+function vehicleName(){
+  return [document.getElementById('sc-year').value, document.getElementById('sc-make').value, document.getElementById('sc-model').value].filter(Boolean).join(' ') || 'Véhicule';
+}
+function worstUrgency(codes){
+  if(codes.some(function(c){ return c.urg==='critique'; })) return 'crit';
+  if(codes.some(function(c){ return c.urg==='moyen'; })) return 'warn';
+  return codes.length ? 'warn' : 'ok';
+}
+function renderResults(){
+  var codes = lastResult.codes;
+  document.getElementById('rv-veh-name').textContent = vehicleName();
+
+  var sumCls = codes.length ? worstUrgency(codes) : 'ok';
+  var sumTxt = codes.length ? ('⚠ ' + codes.length + ' code' + (codes.length>1?'s':'') + ' détecté' + (codes.length>1?'s':'')) : '✓ Aucun code détecté';
+  document.getElementById('rv-summary').innerHTML = '<span class="veh-summary '+sumCls+'">'+sumTxt+'</span>';
+
+  document.getElementById('rv-live').innerHTML =
+    '<div class="live-tile"><div class="v">'+(lastResult.rpm!=null?lastResult.rpm:'—')+'</div><div class="l">RPM</div></div>'
+    + '<div class="live-tile"><div class="v">'+(lastResult.coolant!=null?lastResult.coolant+'°C':'—')+'</div><div class="l">Moteur</div></div>'
+    + '<div class="live-tile"><div class="v">'+(lastResult.volt!=null?lastResult.volt+'V':'—')+'</div><div class="l">Batterie</div></div>';
+
+  var listEl = document.getElementById('dtc-list');
+  if(codes.length === 0){
+    listEl.innerHTML = '<div class="dtc-none">✓ Aucun code détecté — rien d\'anormal côté électronique en ce moment.</div>';
+  } else {
+    listEl.innerHTML = codes.map(function(c, i){
+      return '<div class="dtc-item">'
+        + '<div class="dtc-top" onclick="toggleWhy('+i+')">'
+        +   '<div><div class="dtc-code">'+c.code+'</div><div class="dtc-name">'+escapeHtml(c.fr)+'</div>'
+        +     '<span class="dtc-badge '+c.urg+'">'+(c.urg==='critique'?'À FAIRE':(c.urg==='moyen'?'À SURVEILLER':'MINEUR'))+'</span></div>'
+        +   '<div class="dtc-cost">'+dtcCostLabel(c.min,c.max)+'</div>'
+        + '</div>'
+        + '<div class="dtc-why" id="why-'+i+'">'+escapeHtml(c.why)+'</div>'
+        + '</div>';
+    }).join('');
+  }
+}
+function toggleWhy(i){
+  document.getElementById('why-'+i).classList.toggle('show');
+}
+
+// ═══════════ SAUVEGARDE CHEZ GREAZ (crée un lead dans le dashboard existant) ═══════════
+function saveScanLead(){
+  var statusEl = document.getElementById('scan-save-status');
+  statusEl.className = '';
+  if(!lastResult){ statusEl.textContent = 'Fais un scan avant de sauvegarder.'; statusEl.className = 'err'; return; }
+  if(!_db){ statusEl.textContent = 'Connexion à Greaz indisponible pour l\'instant.'; statusEl.className = 'err'; return; }
+  var name = document.getElementById('sc-name').value.trim();
+  var phone = document.getElementById('sc-phone').value.trim();
+  var email = document.getElementById('sc-email').value.trim();
+  if(!phone && !email){ statusEl.textContent = 'Mets au moins un téléphone ou un courriel pour pouvoir le recontacter.'; statusEl.className = 'err'; return; }
+
+  var btn = document.getElementById('btn-save');
+  var btnOld = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="btn-spin"></span> Envoi...';
+
+  var codes = lastResult.codes;
+  var costed = codes.filter(function(c){ return c.min != null && c.max != null; });
+  var estTotal = costed.length ? Math.round(costed.reduce(function(s,c){ return s + (c.min + c.max)/2; }, 0)) : null;
+
+  var descLines = [];
+  descLines.push('🔍 Scan OBD terrain — ' + (codes.length ? codes.length + ' code(s) détecté(s)' : 'aucun code détecté'));
+  codes.forEach(function(c){
+    descLines.push('• ' + c.code + ' — ' + c.fr + ' (' + (c.urg==='critique'?'à faire':(c.urg==='moyen'?'à surveiller':'mineur')) + ', ' + dtcCostLabel(c.min,c.max) + ')');
+  });
+  var live = [];
+  if(lastResult.rpm!=null) live.push(lastResult.rpm + ' RPM');
+  if(lastResult.coolant!=null) live.push(lastResult.coolant + '°C moteur');
+  if(lastResult.volt!=null) live.push(lastResult.volt + 'V batterie');
+  if(live.length) descLines.push('Données live : ' + live.join(' · '));
+  var attn = _checklistState.filter(function(i){ return i.status === 'attn'; });
+  var ok = _checklistState.filter(function(i){ return i.status === 'ok'; });
+  if(attn.length) descLines.push('⚠ Inspection visuelle — à surveiller : ' + attn.map(function(i){ return i.label; }).join(', '));
+  if(ok.length) descLines.push('✓ Inspection visuelle — correct : ' + ok.map(function(i){ return i.label; }).join(', '));
+
+  _db.collection('leads').add({
+    client_name: name || 'Client terrain',
+    client_phone: phone,
+    client_email: email,
+    vehicle_make: document.getElementById('sc-make').value.trim(),
+    vehicle_model: document.getElementById('sc-model').value.trim(),
+    vehicle_year: document.getElementById('sc-year').value.trim(),
+    vehicle_km: document.getElementById('sc-km').value.trim(),
+    profile: 'proprietaire',
+    problem: '🔍 Scan OBD terrain',
+    urgency: worstUrgency(codes) === 'crit' ? 'Dès que possible' : 'À planifier',
+    description: descLines.join('\n'),
+    est_total: estTotal,
+    status: 'nouveau',
+    source: 'scan_obd_terrain',
+    obd_codes: codes,
+    obd_checklist: _checklistState,
+    obd_rpm: lastResult.rpm,
+    obd_coolant_c: lastResult.coolant,
+    obd_voltage: lastResult.volt,
+    created_at: firebase.firestore.FieldValue.serverTimestamp(),
+  }).then(function(){
+    statusEl.textContent = '✓ Sauvegardé — visible dans tes demandes (dashboard).';
+    statusEl.className = 'ok';
+    btn.innerHTML = '✓ Sauvegardé';
+  }).catch(function(e){
+    btn.disabled = false; btn.innerHTML = btnOld;
+    statusEl.textContent = 'Erreur : ' + e.message;
+    statusEl.className = 'err';
+  });
+}
+
+// ═══════════ ENVOI DU RAPPORT PAR COURRIEL (EmailJS) ═══════════
+function buildScanItemsHtml(){
+  if(!lastResult || !lastResult.codes.length){
+    return '<tr><td style="padding:16px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#63666E;">Aucun code détecté — rien d\'anormal côté électronique en ce moment. 🎉</td></tr>';
+  }
+  return lastResult.codes.map(function(c){
+    var badgeColor = c.urg==='critique' ? '#E85D6E' : (c.urg==='moyen' ? '#C99209' : '#00A862');
+    var badgeBg = c.urg==='critique' ? '#FCEAEC' : (c.urg==='moyen' ? '#FBF2D9' : '#E4F7EE');
+    var badgeText = c.urg==='critique' ? 'À FAIRE' : (c.urg==='moyen' ? 'À SURVEILLER' : 'MINEUR');
+    return ''
+      + '<tr><td style="padding:14px 0;border-bottom:1px solid #ECE9E3;font-family:Arial,Helvetica,sans-serif;">'
+      +   '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
+      +     '<td style="vertical-align:top;">'
+      +       '<div style="font-size:11px;color:#9CA0A8;font-family:monospace;">'+c.code+'</div>'
+      +       '<div style="font-size:14px;font-weight:700;color:#1E2128;margin-top:2px;">'+escapeHtml(c.fr)+'</div>'
+      +       '<span style="display:inline-block;margin-top:5px;font-size:10px;font-weight:700;letter-spacing:.04em;color:'+badgeColor+';background:'+badgeBg+';border-radius:20px;padding:3px 9px;">'+badgeText+'</span>'
+      +     '</td>'
+      +     '<td style="vertical-align:top;text-align:right;white-space:nowrap;padding-left:10px;">'
+      +       '<div style="font-size:14px;font-weight:700;color:#3E6AE1;">'+dtcCostLabel(c.min,c.max)+'</div>'
+      +     '</td>'
+      +   '</tr></table>'
+      + '</td></tr>';
+  }).join('');
+}
+function buildChecklistHtml(){
+  return _checklistState.map(function(item){
+    var icon = item.status==='ok' ? '✅' : (item.status==='attn' ? '⚠️' : '➖');
+    var color = item.status==='ok' ? '#00A862' : (item.status==='attn' ? '#C99209' : '#9CA0A8');
+    return '<tr><td style="padding:8px 0;font-family:Arial,Helvetica,sans-serif;font-size:13.5px;color:#1E2128;">'
+      + '<span style="margin-right:8px;">'+icon+'</span>'+escapeHtml(item.label)
+      + '<span style="float:right;font-weight:700;color:'+color+';">'+(item.status==='ok'?'Correct':(item.status==='attn'?'À surveiller':'Non vérifié'))+'</span>'
+      + '</td></tr>';
+  }).join('');
+}
+function openScanSendModal(){
+  if(!lastResult){ alert('Fais un scan avant d\'envoyer le rapport.'); return; }
+  var pref = document.getElementById('sc-email').value || '';
+  document.getElementById('scan-send-email').value = pref.trim();
+  document.getElementById('scan-send-status').textContent = '';
+  document.getElementById('scan-send-status').className = '';
+  document.getElementById('scan-send-backdrop').classList.add('open');
+}
+function closeScanSendModal(){
+  document.getElementById('scan-send-backdrop').classList.remove('open');
+}
+function sendScanEmail(){
+  var emailInp = document.getElementById('scan-send-email');
+  var to = (emailInp.value || '').trim();
+  var statusEl = document.getElementById('scan-send-status');
+  statusEl.className = '';
+  if(!to || to.indexOf('@') === -1){
+    statusEl.textContent = 'Entre un courriel valide.';
+    statusEl.className = 'err';
+    return;
+  }
+  if(typeof EJS_TEMPLATE_SCAN === 'undefined' || !EJS_TEMPLATE_SCAN || EJS_TEMPLATE_SCAN === 'PASTE_TEMPLATE_ID_ICI'){
+    statusEl.textContent = 'Envoi pas encore configuré (template EmailJS manquant).';
+    statusEl.className = 'err';
+    return;
+  }
+  var btn = document.getElementById('scan-send-btn');
+  var btnOld = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-spin"></span> Envoi...';
+
+  var codes = lastResult.codes;
+  var params = {
+    to_email: to,
+    vehicle_name: vehicleName(),
+    codes_count: codes.length ? (codes.length + ' code(s) détecté(s)') : 'Aucun code détecté',
+    items_html: buildScanItemsHtml(),
+    checklist_html: buildChecklistHtml(),
+    contact_email: 'contact@greaz.ca',
+  };
+
+  emailjs.send(EJS_SERVICE, EJS_TEMPLATE_SCAN, params).then(function(){
+    statusEl.textContent = '✓ Envoyé à ' + to;
+    statusEl.className = 'ok';
+    btn.innerHTML = btnOld;
+    btn.disabled = false;
+    setTimeout(closeScanSendModal, 1400);
+  }).catch(function(){
+    btn.innerHTML = btnOld;
+    btn.disabled = false;
+    statusEl.textContent = 'Échec de l\'envoi. Réessaie dans un instant.';
+    statusEl.className = 'err';
+  });
+}
+</script>
+</body>
+</html>
