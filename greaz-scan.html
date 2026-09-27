@@ -103,6 +103,10 @@ body{font-family:var(--body);background:var(--ivory);color:var(--ink);line-heigh
 .action-row .btn{flex:1;min-width:150px}
 .note-hint{font-size:12px;color:var(--muted);line-height:1.5;margin-top:10px}
 .badge-internal{display:inline-block;background:var(--peachlt);color:#B35A1E;font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:20px;margin-bottom:10px}
+.fuel-toggle{display:flex;gap:8px}
+.fuel-btn{flex:1;padding:12px 10px;border:2px solid var(--line);background:var(--ivory);color:var(--muted);border-radius:13px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s}
+.fuel-btn.act{background:var(--bluelt);border-color:var(--blue);color:var(--blue)}
+.ev-note{background:var(--lavlt);border-radius:14px;padding:12px 14px;margin-top:14px;font-size:12.5px;color:#4A3FA8;line-height:1.5}
 .send-modal-backdrop{display:none;position:fixed;inset:0;background:rgba(30,33,40,.55);backdrop-filter:blur(3px);z-index:200;align-items:center;justify-content:center;padding:18px}
 .send-modal-backdrop.open{display:flex}
 .send-modal{background:#fff;border-radius:24px;padding:26px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(30,33,40,.3);position:relative}
@@ -151,12 +155,21 @@ body{font-family:var(--body);background:var(--ivory);color:var(--ink);line-heigh
       <div class="fld"><label>Téléphone</label><input id="sc-phone" inputmode="tel" placeholder="514 555-1234"></div>
     </div>
     <div class="fld"><label>Courriel</label><input id="sc-email" type="email" inputmode="email" placeholder="client@courriel.com"></div>
+    <button type="button" class="btn btn-ghost" style="margin-bottom:14px" onclick="searchExistingClient()">🔍 Client déjà dans Greaz ?</button>
+    <div id="client-match-status" style="font-size:12.5px;margin:-8px 0 14px;line-height:1.5"></div>
     <div class="row3">
       <div class="fld"><label>Marque</label><input id="sc-make" placeholder="Honda"></div>
       <div class="fld"><label>Modèle</label><input id="sc-model" placeholder="Civic"></div>
       <div class="fld"><label>Année</label><input id="sc-year" inputmode="numeric" placeholder="2019"></div>
     </div>
     <div class="fld"><label>Kilométrage</label><input id="sc-km" inputmode="numeric" placeholder="87000"></div>
+    <div class="fld">
+      <label>Motorisation</label>
+      <div class="fuel-toggle">
+        <button type="button" class="fuel-btn act" id="fuel-essence" onclick="setFuel('essence')">⛽ Essence / hybride</button>
+        <button type="button" class="fuel-btn" id="fuel-electrique" onclick="setFuel('electrique')">🔋 100% électrique</button>
+      </div>
+    </div>
   </div>
 
   <!-- ═══ Étape 2 : connexion + scan ═══ -->
@@ -180,6 +193,10 @@ body{font-family:var(--body);background:var(--ivory);color:var(--ink);line-heigh
         <div id="rv-summary"></div>
         <div class="live-grid" id="rv-live"></div>
       </div>
+    </div>
+
+    <div class="ev-note" id="ev-note" style="display:none">
+      🔋 Véhicule 100% électrique : pas de moteur à combustion, donc pas de régime moteur ni de température à afficher — c'est normal. La plupart des codes de cette table concernent les moteurs à essence ; sur un électrique, la mini-inspection visuelle et l'état général comptent pour beaucoup plus que le scan électronique.
     </div>
 
     <div class="card">
@@ -354,6 +371,7 @@ var device, writeChar, notifyChar;
 var rxBuffer = '';
 var pendingResolve = null;
 var lastResult = null;
+var _bleReady = false;
 
 function techLog(msg){
   var el = document.getElementById('tech-log');
@@ -403,6 +421,48 @@ function sendCmd(cmd, waitMs){
   });
 }
 
+// Découvre le service/les caractéristiques OBD sur une connexion GATT déjà
+// établie (marche autant pour la 1re connexion que pour une reconnexion).
+async function discoverServiceAndInit(server){
+  var service = null;
+  for(var i=0;i<SERVICE_UUIDS.length;i++){
+    try { service = await server.getPrimaryService(SERVICE_UUIDS[i]); break; } catch(e){}
+  }
+  if(!service) throw new Error('Le service OBD (FFF0/FFE0) n\'a pas été trouvé sur ce dongle.');
+  var chars = await service.getCharacteristics();
+  writeChar = null; notifyChar = null;
+  chars.forEach(function(c){
+    if(c.properties.notify || c.properties.indicate) notifyChar = c;
+    if(c.properties.write || c.properties.writeWithoutResponse) writeChar = c;
+  });
+  if(!writeChar || !notifyChar) throw new Error('Caractéristiques lecture/écriture introuvables sur ce dongle.');
+  await notifyChar.startNotifications();
+  notifyChar.addEventListener('characteristicvaluechanged', onNotify);
+}
+async function initElm327(){
+  techLog('✓ Connecté — initialisation ELM327…');
+  await sendCmd('ATZ', 1800);
+  await sendCmd('ATE0');
+  await sendCmd('ATL0');
+  await sendCmd('ATS0');
+  await sendCmd('ATH0');
+  var proto = await sendCmd('ATSP0');
+  techLog('✓ Prêt (' + proto.replace(/[\r\n>]/g,' ').trim() + ')');
+}
+// Le dongle BLE se déconnecte parfois tout seul (hors de portée, tablette qui
+// verrouille l'écran, dongle qui dort) — sans ça, un scan lancé après coup
+// échouait en silence (5 erreurs GATT à la suite). Ici on le détecte tout de
+// suite et on remet l'interface dans un état clair.
+function onDeviceDisconnected(){
+  _bleReady = false;
+  setStatus('Dongle déconnecté ⚠', 'err');
+  techLog('✗ Dongle déconnecté (hors de portée, contact coupé, ou mise en veille de la tablette).');
+  document.getElementById('btn-scan').disabled = true;
+  var btn = document.getElementById('btn-connect');
+  btn.disabled = false;
+  btn.textContent = '🔌 Reconnecter le dongle';
+}
+
 async function connectAndInit(){
   showErr('');
   var btn = document.getElementById('btn-connect');
@@ -411,32 +471,23 @@ async function connectAndInit(){
     if(!navigator.bluetooth){
       throw new Error('Ce navigateur ne supporte pas le Bluetooth web. Utilise Chrome sur la tablette Android — jamais Safari/iPhone.');
     }
-    setStatus('Recherche du dongle…', 'busy');
-    device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: SERVICE_UUIDS });
-    techLog('Appareil choisi : ' + (device.name || '(sans nom)'));
-    setStatus('Connexion…', 'busy');
-    var server = await device.gatt.connect();
-    var service = null;
-    for(var i=0;i<SERVICE_UUIDS.length;i++){
-      try { service = await server.getPrimaryService(SERVICE_UUIDS[i]); break; } catch(e){}
+    if(device){
+      // On a déjà choisi ce dongle avant (reconnexion) — pas besoin de
+      // rouvrir le sélecteur Bluetooth, juste de reconnecter le GATT.
+      setStatus('Reconnexion…', 'busy');
+      var srv = await device.gatt.connect();
+      await discoverServiceAndInit(srv);
+    } else {
+      setStatus('Recherche du dongle…', 'busy');
+      device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: SERVICE_UUIDS });
+      techLog('Appareil choisi : ' + (device.name || '(sans nom)'));
+      device.addEventListener('gattserverdisconnected', onDeviceDisconnected);
+      setStatus('Connexion…', 'busy');
+      var server = await device.gatt.connect();
+      await discoverServiceAndInit(server);
     }
-    if(!service) throw new Error('Le service OBD (FFF0/FFE0) n\'a pas été trouvé sur ce dongle.');
-    var chars = await service.getCharacteristics();
-    chars.forEach(function(c){
-      if(c.properties.notify || c.properties.indicate) notifyChar = c;
-      if(c.properties.write || c.properties.writeWithoutResponse) writeChar = c;
-    });
-    if(!writeChar || !notifyChar) throw new Error('Caractéristiques lecture/écriture introuvables sur ce dongle.');
-    await notifyChar.startNotifications();
-    notifyChar.addEventListener('characteristicvaluechanged', onNotify);
-    techLog('✓ Connecté — initialisation ELM327…');
-    await sendCmd('ATZ', 1800);
-    await sendCmd('ATE0');
-    await sendCmd('ATL0');
-    await sendCmd('ATS0');
-    await sendCmd('ATH0');
-    var proto = await sendCmd('ATSP0');
-    techLog('✓ Prêt (' + proto.replace(/[\r\n>]/g,' ').trim() + ')');
+    await initElm327();
+    _bleReady = true;
     setStatus('Connecté ✓', 'on');
     document.getElementById('btn-scan').disabled = false;
     btn.textContent = 'Connecté ✓';
@@ -484,6 +535,26 @@ function extractBytesAfter(raw, header){
 
 async function runScan(){
   document.getElementById('result-wrap').classList.remove('show');
+  if(!device){ showErr('Connecte le dongle avant de lancer un scan.'); return; }
+  if(!device.gatt.connected){
+    showErr('');
+    setStatus('Reconnexion…', 'busy');
+    techLog('⚠ Dongle déconnecté au moment de scanner — reconnexion automatique…');
+    try {
+      var server = await device.gatt.connect();
+      await discoverServiceAndInit(server);
+      await initElm327();
+      setStatus('Connecté ✓', 'on');
+    } catch(err){
+      setStatus('Dongle déconnecté', 'err');
+      showErr('Impossible de reconnecter automatiquement (' + err.message + '). Rapproche-toi du véhicule et appuie sur « Reconnecter le dongle » avant de réessayer.');
+      techLog('✗ échec de la reconnexion : ' + err.message);
+      document.getElementById('btn-scan').disabled = true;
+      var cbtn = document.getElementById('btn-connect');
+      cbtn.disabled = false; cbtn.textContent = '🔌 Reconnecter le dongle';
+      return;
+    }
+  }
   document.getElementById('btn-scan').disabled = true;
   techLog('— Scan en cours —');
 
@@ -521,6 +592,91 @@ function escapeHtml(s){
 function vehicleName(){
   return [document.getElementById('sc-year').value, document.getElementById('sc-make').value, document.getElementById('sc-model').value].filter(Boolean).join(' ') || 'Véhicule';
 }
+var _fuelType = 'essence';
+function setFuel(type){
+  _fuelType = type;
+  document.getElementById('fuel-essence').classList.toggle('act', type==='essence');
+  document.getElementById('fuel-electrique').classList.toggle('act', type==='electrique');
+}
+
+// ═══════════ RECHERCHE D'UN CLIENT EXISTANT (pour ne pas créer de doublon) ═══════════
+// Même logique de clé de correspondance que le répertoire du dashboard
+// (courriel en priorité, sinon téléphone, chiffres seulement) — voir crmKey()
+// dans greaz-dashboard.html.
+function normPhone(p){ return (p||'').replace(/[^0-9]/g,''); }
+function normEmail(e){ return (e||'').trim().toLowerCase(); }
+var _matchedClientUid = null, _matchedClientName = null, _matchedCrmId = null, _matchedCrmNote = null, _matchedLeadId = null, _matchedLeadNotes = null;
+
+function searchExistingClient(){
+  var statusEl = document.getElementById('client-match-status');
+  if(!_db){ statusEl.innerHTML = '<span style="color:var(--rose)">Connexion à Greaz indisponible.</span>'; return; }
+  var email = normEmail(document.getElementById('sc-email').value);
+  var phone = normPhone(document.getElementById('sc-phone').value);
+  if(!email && !phone){
+    statusEl.innerHTML = '<span style="color:var(--rose)">Mets au moins un courriel ou un téléphone pour chercher.</span>';
+    return;
+  }
+  _matchedClientUid = null; _matchedClientName = null; _matchedCrmId = null; _matchedCrmNote = null; _matchedLeadId = null; _matchedLeadNotes = null;
+  statusEl.innerHTML = '<span style="color:var(--muted)">🔍 Recherche...</span>';
+
+  Promise.all([
+    _db.collection('clients').get(),
+    _db.collection('clients_crm').get(),
+    _db.collection('leads').get()
+  ]).then(function(results){
+    var matchedClient = null;
+    results[0].forEach(function(doc){
+      var d = doc.data();
+      if((email && normEmail(d.email) === email) || (phone && normPhone(d.phone) === phone)){ matchedClient = Object.assign({_uid:doc.id}, d); }
+    });
+    var matchedCrm = null;
+    results[1].forEach(function(doc){
+      var d = doc.data();
+      if((email && normEmail(d.client_email) === email) || (phone && normPhone(d.client_phone) === phone)){ matchedCrm = Object.assign({_id:doc.id}, d); }
+    });
+    var matchedLead = null;
+    results[2].forEach(function(doc){
+      var d = doc.data();
+      if((email && normEmail(d.client_email) === email) || (phone && normPhone(d.client_phone) === phone)){
+        var newer = !matchedLead || (d.created_at && matchedLead._created_at && d.created_at.toMillis() > matchedLead._created_at.toMillis());
+        if(newer){ matchedLead = Object.assign({_id:doc.id, _created_at:d.created_at}, d); }
+      }
+    });
+
+    if(matchedClient){
+      _matchedClientUid = matchedClient._uid;
+      _matchedClientName = [matchedClient.prenom, matchedClient.nom].filter(Boolean).join(' ') || 'Client';
+      var v0 = (matchedClient.vehicles||[])[0] || {};
+      if(v0.make && !document.getElementById('sc-make').value) document.getElementById('sc-make').value = v0.make;
+      if(v0.model && !document.getElementById('sc-model').value) document.getElementById('sc-model').value = v0.model;
+      if(v0.year && !document.getElementById('sc-year').value) document.getElementById('sc-year').value = v0.year;
+      if(v0.km && !document.getElementById('sc-km').value) document.getElementById('sc-km').value = v0.km;
+      if(v0.fuel === 'electrique') setFuel('electrique');
+      if(!document.getElementById('sc-name').value.trim()) document.getElementById('sc-name').value = _matchedClientName;
+    } else if(matchedCrm){
+      _matchedCrmId = matchedCrm._id;
+      _matchedCrmNote = matchedCrm.note || '';
+      _matchedClientName = matchedCrm.name || 'Client';
+      if(!document.getElementById('sc-name').value.trim()) document.getElementById('sc-name').value = _matchedClientName;
+    }
+    if(matchedLead){
+      _matchedLeadId = matchedLead._id;
+      _matchedLeadNotes = matchedLead.notes || [];
+    }
+
+    if(matchedClient){
+      statusEl.innerHTML = '<span style="color:var(--mint);font-weight:700">✓ '+escapeHtml(_matchedClientName)+' — compte Greaz trouvé, le scan ira dans son dossier'+(matchedLead?' + met à jour sa demande existante':'')+'.</span>';
+    } else if(matchedCrm){
+      statusEl.innerHTML = '<span style="color:var(--amber);font-weight:700">✓ '+escapeHtml(_matchedClientName)+' — fiche manuelle trouvée (pas de compte, pas de dossier possible)'+(matchedLead?' + met à jour sa demande existante':'')+'.</span>';
+    } else if(matchedLead){
+      statusEl.innerHTML = '<span style="color:var(--amber);font-weight:700">✓ Demande existante trouvée — le scan va la mettre à jour au lieu d\'en créer une nouvelle.</span>';
+    } else {
+      statusEl.innerHTML = '<span style="color:var(--muted)">Aucun client existant trouvé — ce sera une nouvelle fiche.</span>';
+    }
+  }).catch(function(e){
+    statusEl.innerHTML = '<span style="color:var(--rose)">Erreur de recherche : '+e.message+'</span>';
+  });
+}
 function worstUrgency(codes){
   if(codes.some(function(c){ return c.urg==='critique'; })) return 'crit';
   if(codes.some(function(c){ return c.urg==='moyen'; })) return 'warn';
@@ -534,10 +690,16 @@ function renderResults(){
   var sumTxt = codes.length ? ('⚠ ' + codes.length + ' code' + (codes.length>1?'s':'') + ' détecté' + (codes.length>1?'s':'')) : '✓ Aucun code détecté';
   document.getElementById('rv-summary').innerHTML = '<span class="veh-summary '+sumCls+'">'+sumTxt+'</span>';
 
-  document.getElementById('rv-live').innerHTML =
-    '<div class="live-tile"><div class="v">'+(lastResult.rpm!=null?lastResult.rpm:'—')+'</div><div class="l">RPM</div></div>'
-    + '<div class="live-tile"><div class="v">'+(lastResult.coolant!=null?lastResult.coolant+'°C':'—')+'</div><div class="l">Moteur</div></div>'
-    + '<div class="live-tile"><div class="v">'+(lastResult.volt!=null?lastResult.volt+'V':'—')+'</div><div class="l">Batterie</div></div>';
+  document.getElementById('ev-note').style.display = (_fuelType === 'electrique') ? 'block' : 'none';
+  if(_fuelType === 'electrique'){
+    document.getElementById('rv-live').innerHTML =
+      '<div class="live-tile" style="grid-column:1/-1"><div class="v">'+(lastResult.volt!=null?lastResult.volt+'V':'—')+'</div><div class="l">Batterie 12V (accessoires)</div></div>';
+  } else {
+    document.getElementById('rv-live').innerHTML =
+      '<div class="live-tile"><div class="v">'+(lastResult.rpm!=null?lastResult.rpm:'—')+'</div><div class="l">RPM</div></div>'
+      + '<div class="live-tile"><div class="v">'+(lastResult.coolant!=null?lastResult.coolant+'°C':'—')+'</div><div class="l">Moteur</div></div>'
+      + '<div class="live-tile"><div class="v">'+(lastResult.volt!=null?lastResult.volt+'V':'—')+'</div><div class="l">Batterie</div></div>';
+  }
 
   var listEl = document.getElementById('dtc-list');
   if(codes.length === 0){
@@ -586,36 +748,98 @@ function saveScanLead(){
   var live = [];
   if(lastResult.rpm!=null) live.push(lastResult.rpm + ' RPM');
   if(lastResult.coolant!=null) live.push(lastResult.coolant + '°C moteur');
-  if(lastResult.volt!=null) live.push(lastResult.volt + 'V batterie');
+  if(lastResult.volt!=null) live.push(lastResult.volt + 'V batterie 12V');
   if(live.length) descLines.push('Données live : ' + live.join(' · '));
   var attn = _checklistState.filter(function(i){ return i.status === 'attn'; });
   var ok = _checklistState.filter(function(i){ return i.status === 'ok'; });
   if(attn.length) descLines.push('⚠ Inspection visuelle — à surveiller : ' + attn.map(function(i){ return i.label; }).join(', '));
   if(ok.length) descLines.push('✓ Inspection visuelle — correct : ' + ok.map(function(i){ return i.label; }).join(', '));
 
-  _db.collection('leads').add({
-    client_name: name || 'Client terrain',
-    client_phone: phone,
-    client_email: email,
-    vehicle_make: document.getElementById('sc-make').value.trim(),
-    vehicle_model: document.getElementById('sc-model').value.trim(),
-    vehicle_year: document.getElementById('sc-year').value.trim(),
-    vehicle_km: document.getElementById('sc-km').value.trim(),
-    profile: 'proprietaire',
-    problem: '🔍 Scan OBD terrain',
-    urgency: worstUrgency(codes) === 'crit' ? 'Dès que possible' : 'À planifier',
-    description: descLines.join('\n'),
-    est_total: estTotal,
-    status: 'nouveau',
-    source: 'scan_obd_terrain',
-    obd_codes: codes,
-    obd_checklist: _checklistState,
-    obd_rpm: lastResult.rpm,
-    obd_coolant_c: lastResult.coolant,
-    obd_voltage: lastResult.volt,
-    created_at: firebase.firestore.FieldValue.serverTimestamp(),
-  }).then(function(){
-    statusEl.textContent = '✓ Sauvegardé — visible dans tes demandes (dashboard).';
+  var vehName = vehicleName();
+  var vehMake = document.getElementById('sc-make').value.trim();
+  var vehModel = document.getElementById('sc-model').value.trim();
+  var vehYear = document.getElementById('sc-year').value.trim();
+  var vehKm = document.getElementById('sc-km').value.trim();
+  var today = new Date().toISOString().slice(0,10);
+  var summaryText = descLines.join('\n');
+  var writes = [];
+  var savedWhere = [];
+
+  // 1) Client avec un vrai compte Greaz trouvé → ajoute directement dans son
+  //    dossier d'entretien (service_history), exactement comme quand tu
+  //    ajoutes un entretien à la main dans le dashboard — il le voit dans
+  //    son espace client.
+  if(_matchedClientUid){
+    writes.push(_db.collection('service_history').add({
+      client_uid: _matchedClientUid,
+      vehicle_label: vehName,
+      date: today, time: '',
+      mechanic_id: '', mechanic_name: '',
+      location: '',
+      service_type: '',
+      title: '🔍 Scan OBD terrain',
+      cost: 0,
+      saved: 0,
+      note: summaryText,
+      next_due_date: '',
+      facture_url: null, facture_name: null,
+      created_by: 'Scan terrain',
+      created_at: firebase.firestore.FieldValue.serverTimestamp()
+    }));
+    savedWhere.push('son dossier d\'entretien');
+  }
+
+  // 2) Une demande (lead) existe déjà pour ce contact → on la met à jour
+  //    (nouvelle note) au lieu d'en créer une en double.
+  if(_matchedLeadId){
+    var newNote = { text: summaryText, author: 'Scan terrain', time: new Date().toLocaleString('fr-CA') };
+    var notes = (_matchedLeadNotes || []).concat([newNote]);
+    writes.push(_db.collection('leads').doc(_matchedLeadId).update({
+      notes: notes,
+      vehicle_km: vehKm,
+      obd_codes: codes,
+      obd_checklist: _checklistState,
+      updated_at: firebase.firestore.FieldValue.serverTimestamp()
+    }));
+    savedWhere.push('sa demande existante');
+  } else {
+    // 3) Ni dossier ni demande existante trouvés (ou client manuel sans
+    //    compte) → nouvelle demande, comme avant.
+    writes.push(_db.collection('leads').add({
+      client_name: name || _matchedClientName || 'Client terrain',
+      client_phone: phone,
+      client_email: email,
+      vehicle_make: vehMake,
+      vehicle_model: vehModel,
+      vehicle_year: vehYear,
+      vehicle_km: vehKm,
+      vehicle_fuel: _fuelType,
+      profile: 'proprietaire',
+      problem: '🔍 Scan OBD terrain',
+      urgency: worstUrgency(codes) === 'crit' ? 'Dès que possible' : 'À planifier',
+      description: summaryText,
+      est_total: estTotal,
+      status: 'nouveau',
+      source: 'scan_obd_terrain',
+      obd_codes: codes,
+      obd_checklist: _checklistState,
+      obd_rpm: lastResult.rpm,
+      obd_coolant_c: lastResult.coolant,
+      obd_voltage: lastResult.volt,
+      created_at: firebase.firestore.FieldValue.serverTimestamp(),
+    }));
+    savedWhere.push(_matchedClientUid ? 'une nouvelle demande' : 'tes demandes (nouvelle fiche)');
+  }
+
+  // 4) Client manuel (fiche du répertoire sans compte) trouvé — on ajoute
+  //    quand même une trace sur sa fiche, en gardant sa note existante.
+  if(_matchedCrmId){
+    var mergedNote = (_matchedCrmNote ? _matchedCrmNote + '\n\n' : '') + '[' + today + '] ' + summaryText;
+    writes.push(_db.collection('clients_crm').doc(_matchedCrmId).update({ note: mergedNote }).catch(function(){}));
+  }
+
+  Promise.all(writes).then(function(){
+    statusEl.textContent = '✓ Sauvegardé dans ' + savedWhere.join(' et ') + '.';
     statusEl.className = 'ok';
     btn.innerHTML = '✓ Sauvegardé';
   }).catch(function(e){
