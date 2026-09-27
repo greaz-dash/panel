@@ -2160,6 +2160,8 @@ async function saveCrmClientEdit(skey){
    site — c'est nous (garage/admin) qui l'alimentons après chaque RDV. */
 var _dossierUid = null;
 var _dossierVehicle = '';
+var _dossierVehicles = [];
+var _dossierPhotoBusy = false;
 var DLBL = 'font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px';
 var DFLD = 'width:100%;padding:9px 11px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13.5px;font-family:inherit;box-sizing:border-box';
 
@@ -2245,7 +2247,8 @@ function openClientDossier(skey){
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(23,26,32,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto';
   modal.innerHTML = '<div style="background:white;border-radius:18px;padding:1.75rem;max-width:560px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">'
     +'<h3 style="font-size:17px;font-weight:800;margin-bottom:2px">📋 Dossier — '+c.name+'</h3>'
-    +'<p style="font-size:12.5px;color:#6B7280;margin-bottom:1.1rem">'+(c.vehicle||'Véhicule non précisé')+' · Ce que tu ajoutes ici, il le voit dans son espace Greaz</p>'
+    +'<p style="font-size:12.5px;color:#6B7280;margin-bottom:.6rem">'+(c.vehicle||'Véhicule non précisé')+' · Ce que tu ajoutes ici, il le voit dans son espace Greaz</p>'
+    +'<div id="dossier-veh-photo-box" style="margin-bottom:1.1rem">⏳ Chargement de la photo...</div>'
     +'<div id="dossier-stat" style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:10px 13px;font-size:13px;color:#15803D;font-weight:700;margin-bottom:1.1rem">⏳ Chargement...</div>'
     +'<div style="border-top:1px solid #F3F4F6;padding-top:1rem;margin-bottom:1rem">'
     +'<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7280;margin-bottom:8px">➕ Ajouter un entretien / RV</div>'
@@ -2286,6 +2289,109 @@ function openClientDossier(skey){
   modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
   dossierOnServiceChange();
   loadDossierRecords();
+  loadDossierVehiclePhoto();
+}
+
+/* ══════════ PHOTO DU VÉHICULE — gérée seulement par l'admin ici (pas par le
+   client dans son espace) ══════════ */
+function loadDossierVehiclePhoto(){
+  if(!_dossierUid) return;
+  db.collection('clients').doc(_dossierUid).get().then(function(snap){
+    var d = snap.data() || {};
+    _dossierVehicles = d.vehicles || [];
+    renderDossierVehiclePhoto();
+  }).catch(function(){
+    _dossierVehicles = [];
+    renderDossierVehiclePhoto();
+  });
+}
+function renderDossierVehiclePhoto(){
+  var box = document.getElementById('dossier-veh-photo-box');
+  if(!box) return;
+  if(_dossierPhotoBusy){
+    box.innerHTML = '<div style="font-size:12.5px;color:#6B7280;font-weight:600">⏳ Envoi de la photo...</div>';
+    return;
+  }
+  if(!_dossierVehicles.length){
+    box.innerHTML = '<div style="font-size:11.5px;color:#9CA3AF">Ajoute d\'abord un véhicule au compte du client pour pouvoir mettre une photo.</div>';
+    return;
+  }
+  var v0 = _dossierVehicles[0] || {};
+  if(v0.photo_url){
+    box.innerHTML = '<img src="'+v0.photo_url+'" style="width:100%;height:150px;object-fit:cover;border-radius:12px;display:block" alt="">'
+      + '<div style="display:flex;gap:8px;margin-top:6px">'
+      + '<label style="flex:1;text-align:center;padding:8px;background:#F3F4F6;border-radius:8px;font-size:12px;font-weight:700;color:#374151;cursor:pointer">🔄 Changer la photo<input type="file" accept="image/*" style="display:none" onchange="onDossierVehPhotoSelected(this)"></label>'
+      + '<button type="button" onclick="removeDossierVehPhoto()" style="padding:8px 14px;background:#FEF2F2;color:#DC2626;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">✕</button>'
+      + '</div>';
+  } else {
+    box.innerHTML = '<label style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100px;border:2px dashed #E5E7EB;border-radius:12px;cursor:pointer;color:#9CA3AF;font-size:12.5px;font-weight:600;gap:4px">'
+      + '📷 Ajouter une photo du véhicule<input type="file" accept="image/*" style="display:none" onchange="onDossierVehPhotoSelected(this)"></label>';
+  }
+}
+function onDossierVehPhotoSelected(input){
+  var file = input.files && input.files[0];
+  input.value = '';
+  if(!file || !_dossierUid || !_dossierVehicles.length) return;
+  if(file.type.indexOf('image/') !== 0){ alert('Choisis une photo (image).'); return; }
+  _dossierPhotoBusy = true;
+  renderDossierVehiclePhoto();
+  resizeImageFile(file, 1280, 0.85).then(function(blob){
+    var path = 'vehicle_photos/' + _dossierUid + '/' + Date.now() + '.jpg';
+    return firebase.storage().ref(path).put(blob, { contentType: 'image/jpeg' });
+  }).then(function(snap){
+    return snap.ref.getDownloadURL();
+  }).then(function(url){
+    _dossierVehicles[0] = Object.assign({}, _dossierVehicles[0], { photo_url: url });
+    return db.collection('clients').doc(_dossierUid).update({ vehicles: _dossierVehicles });
+  }).then(function(){
+    _dossierPhotoBusy = false;
+    renderDossierVehiclePhoto();
+  }).catch(function(e){
+    _dossierPhotoBusy = false;
+    renderDossierVehiclePhoto();
+    alert('Erreur d\'envoi de la photo : ' + e.message);
+  });
+}
+function removeDossierVehPhoto(){
+  if(!_dossierUid || !_dossierVehicles.length) return;
+  if(!confirm('Retirer la photo de ce véhicule ?')) return;
+  _dossierPhotoBusy = true;
+  renderDossierVehiclePhoto();
+  _dossierVehicles[0] = Object.assign({}, _dossierVehicles[0], { photo_url: '' });
+  db.collection('clients').doc(_dossierUid).update({ vehicles: _dossierVehicles }).then(function(){
+    _dossierPhotoBusy = false;
+    renderDossierVehiclePhoto();
+  }).catch(function(e){
+    _dossierPhotoBusy = false;
+    renderDossierVehiclePhoto();
+    alert('Erreur : ' + e.message);
+  });
+}
+// Les photos de cell peuvent faire 5-10 Mo — on redimensionne à ~1280px de
+// large max et on compresse en JPEG avant l'envoi (upload plus vite, moins
+// cher en stockage Firebase). Même logique que uploadFactureFile mais pour
+// une image qu'on veut afficher en vignette, pas garder en full résolution.
+function resizeImageFile(file, maxDim, quality){
+  return new Promise(function(resolve, reject){
+    var img = new Image();
+    var url = URL.createObjectURL(file);
+    img.onload = function(){
+      URL.revokeObjectURL(url);
+      var w = img.width, h = img.height;
+      if(w > maxDim || h > maxDim){
+        if(w >= h){ h = Math.round(h * maxDim / w); w = maxDim; }
+        else { w = Math.round(w * maxDim / h); h = maxDim; }
+      }
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(function(blob){
+        if(blob) resolve(blob); else reject(new Error('Conversion d\'image échouée.'));
+      }, 'image/jpeg', quality || 0.85);
+    };
+    img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('Impossible de lire l\'image.')); };
+    img.src = url;
+  });
 }
 
 function dossierOnServiceChange(){
