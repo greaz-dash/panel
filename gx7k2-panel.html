@@ -5,7 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Greaz — Gestion</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234568D6'/%3E%3Ctext x='50' y='50' font-family='Arial,sans-serif' font-size='62' font-weight='800' fill='white' text-anchor='middle' dominant-baseline='central' letter-spacing='-3'%3EG%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234568D6'/%3E%3Ctext x='50' y='50' font-family='Arial,sans-serif' font-size='62' font-weight='800' fill='white' text-anchor='middle' dominant-baseline='central' letter-spacing='-3'%3EG%3C/text%3E%3C/svg%3E">
 <meta name="theme-color" content="#4568D6">
+<!-- ═══ APP INSTALLABLE (PWA) ═══ -->
+<link rel="manifest" href="manifest-dashboard.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Greaz Gestion">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -207,6 +214,16 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
 @keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
 @keyframes slideOut{from{transform:translateX(0);opacity:1}to{transform:translateX(120%);opacity:0}}
 #notif-bell:hover{background:rgba(255,255,255,.15)!important}
+/* Le conteneur de notifications est vide la plupart du temps (0 toast) mais
+   garde quand même une "boîte" via ses styles inline top/right — sur mobile,
+   la règle @media plus bas ajoute bottom+left SANS pouvoir écraser le top:16px
+   inline (le style inline a toujours priorité sur une règle externe pour la
+   même propriété). Résultat : le conteneur s'étire de top:16px à bottom:12px
+   et devient un rectangle invisible qui couvre presque tout l'écran, bloquant
+   les taps sur les onglets/cartes en dessous — découvert en testant à une
+   largeur de téléphone. pointer-events:none règle ça une fois pour toutes ;
+   chaque toast repasse à pointer-events:auto pour rester cliquable. */
+#notif-container{pointer-events:none}
 
 /* ANNUAIRE */
 .pending-row{background:white;border:1.5px solid var(--orangebdr);border-radius:var(--r2);padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;box-shadow:var(--shadow-sm);}
@@ -299,7 +316,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
   .header-logo{font-size:1.05rem}
   .header-right{gap:5px}
   .header-btn{font-size:11px;padding:6px 10px;border-radius:8px}
-  .header-right .header-date, .header-right .header-email{display:none}
+  .header-right .htime, .header-right #admin-email{display:none}
 
   /* Barre de stats : défilement fluide, sans scrollbar moche */
   .stats-bar{padding:.6rem .85rem;gap:1rem;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
@@ -348,6 +365,13 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
   .tab{padding:13px 12px;font-size:13px}
   .directory-actions .abtn{flex:1 1 100%}
   .info-grid{grid-template-columns:1fr!important}
+  /* Les formulaires dans les modals (dossier client, RDV, garage...) utilisent
+     souvent un grid 2 colonnes en style inline (pas une classe), donc les
+     règles ci-dessus ne les touchent pas. Sur les téléphones les plus étroits,
+     ça rend chaque champ trop petit pour taper confortablement — on les
+     repasse en 1 colonne ici (!important nécessaire pour l'emporter sur le
+     style inline). */
+  [id$="-modal"] [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr!important}
 }
 
 /* Zones tactiles confortables : tout ce qui se clique fait au moins 44px de haut sur mobile */
@@ -1126,7 +1150,7 @@ function updateNotifBadge(){
 function showNotif(title, subtitle, tabTarget, silent){
   var container = document.getElementById('notif-container');
   var toast = document.createElement('div');
-  toast.style.cssText = 'background:white;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);border-left:4px solid #00C26F;padding:14px 16px;cursor:pointer;animation:slideIn .3s ease;transform-origin:right';
+  toast.style.cssText = 'background:white;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);border-left:4px solid #00C26F;padding:14px 16px;cursor:pointer;animation:slideIn .3s ease;transform-origin:right;pointer-events:auto';
   toast.innerHTML = '<div style="display:flex;align-items:flex-start;gap:10px">'
     +'<div style="font-size:22px;flex-shrink:0">🔔</div>'
     +'<div style="flex:1;min-width:0">'
@@ -5829,6 +5853,29 @@ function dl(content, filename){
   URL.revokeObjectURL(url);
 }
 function today(){ return new Date().toISOString().slice(0,10); }
+
+/* Mise à jour automatique de l'app installée — sans que l'admin ait besoin
+   de vider son cache lui-même. Dès qu'une nouvelle version de sw-dashboard.js
+   est publiée, on force le navigateur à vérifier (updateViaCache:'none'), et
+   dès qu'elle prend le contrôle, on recharge la page une seule fois pour
+   voir tout de suite la nouvelle version. */
+if('serviceWorker' in navigator){
+  var _swRefreshingDash = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function(){
+    if(_swRefreshingDash) return;
+    _swRefreshingDash = true;
+    window.location.reload();
+  });
+
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw-dashboard.js', { updateViaCache:'none' }).then(function(reg){
+      reg.update().catch(function(){});
+      document.addEventListener('visibilitychange', function(){
+        if(document.visibilityState === 'visible') reg.update().catch(function(){});
+      });
+    }).catch(function(e){ console.log('SW:', e); });
+  });
+}
 </script>
 </body>
 </html>
