@@ -107,6 +107,11 @@ body{font-family:var(--body);background:var(--ivory);color:var(--ink);line-heigh
 .fuel-btn{flex:1;padding:12px 10px;border:2px solid var(--line);background:var(--ivory);color:var(--muted);border-radius:13px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s}
 .fuel-btn.act{background:var(--bluelt);border-color:var(--blue);color:var(--blue)}
 .ev-note{background:var(--lavlt);border-radius:14px;padding:12px 14px;margin-top:14px;font-size:12.5px;color:#4A3FA8;line-height:1.5}
+.extra-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mini-tile{background:var(--ivory);border-radius:12px;padding:12px 10px;text-align:center}
+.mini-tile .v{font-family:var(--data);font-weight:700;font-size:15px;color:var(--ink)}
+.mini-tile .v.warn{color:var(--amber)}
+.mini-tile .l{font-size:9.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.03em;margin-top:2px}
 .send-modal-backdrop{display:none;position:fixed;inset:0;background:rgba(30,33,40,.55);backdrop-filter:blur(3px);z-index:200;align-items:center;justify-content:center;padding:18px}
 .send-modal-backdrop.open{display:flex}
 .send-modal{background:#fff;border-radius:24px;padding:26px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(30,33,40,.3);position:relative}
@@ -199,9 +204,20 @@ body{font-family:var(--body);background:var(--ivory);color:var(--ink);line-heigh
       🔋 Véhicule 100% électrique : pas de moteur à combustion, donc pas de régime moteur ni de température à afficher — c'est normal. La plupart des codes de cette table concernent les moteurs à essence ; sur un électrique, la mini-inspection visuelle et l'état général comptent pour beaucoup plus que le scan électronique.
     </div>
 
+    <div class="card" id="tech-card" style="display:none">
+      <h2>🪪 Fiche technique</h2>
+      <div id="tech-body"></div>
+    </div>
+
     <div class="card">
       <h2>📟 Codes détectés</h2>
       <div id="dtc-list"></div>
+    </div>
+
+    <div class="card" id="extra-card" style="display:none">
+      <h2>🩺 Bilan additionnel</h2>
+      <div class="extra-grid" id="extra-grid"></div>
+      <div class="note-hint" id="extra-note"></div>
     </div>
   </div>
 
@@ -576,12 +592,127 @@ async function runScan(){
   var voltMatch = voltRaw.match(/(\d+\.?\d*)\s*V/i);
   var volt = voltMatch ? voltMatch[1] : null;
 
-  lastResult = { codes: codes, rpm: rpm, coolant: coolant, volt: volt, raw: dtcRaw };
+  // ═══ Données additionnelles (PIDs standards Mode 01, mêmes sur toutes les
+  // autos à essence/hybrides — donnent un "bilan" même quand y'a aucun code) ═══
+  var extra = { load:null, stft:null, ltft:null, iat:null, fuelLevel:null, distSinceClear:null };
+  if(_fuelType !== 'electrique'){
+    var loadRaw = await sendCmd('0104', 1200);
+    var loadBytes = extractBytesAfter(loadRaw, '41 04');
+    extra.load = loadBytes ? Math.round(parseInt(loadBytes[0],16)*100/255) : null;
+
+    var stftRaw = await sendCmd('0106', 1200);
+    var stftBytes = extractBytesAfter(stftRaw, '41 06');
+    extra.stft = stftBytes ? Math.round((parseInt(stftBytes[0],16)-128)*100/128) : null;
+
+    var ltftRaw = await sendCmd('0107', 1200);
+    var ltftBytes = extractBytesAfter(ltftRaw, '41 07');
+    extra.ltft = ltftBytes ? Math.round((parseInt(ltftBytes[0],16)-128)*100/128) : null;
+
+    var iatRaw = await sendCmd('010F', 1200);
+    var iatBytes = extractBytesAfter(iatRaw, '41 0F');
+    extra.iat = iatBytes ? (parseInt(iatBytes[0],16) - 40) : null;
+
+    var fuelRaw = await sendCmd('012F', 1200);
+    var fuelBytes = extractBytesAfter(fuelRaw, '41 2F');
+    extra.fuelLevel = fuelBytes ? Math.round(parseInt(fuelBytes[0],16)*100/255) : null;
+  }
+  var distRaw = await sendCmd('0131', 1200);
+  var distBytes = extractBytesAfter(distRaw, '41 31');
+  extra.distSinceClear = (distBytes && distBytes.length >= 2) ? (parseInt(distBytes[0],16)*256 + parseInt(distBytes[1],16)) : null;
+
+  // ═══ Voyant moteur (MIL) — statut lu directement sur l'ECU, indépendant
+  // des codes de la table maison. Donne "allumé/éteint" même sans code connu. ═══
+  var milOn = null, milDtcCount = null;
+  var milRaw = await sendCmd('0101', 1200);
+  var milBytes = extractBytesAfter(milRaw, '41 01');
+  if(milBytes && milBytes.length >= 1){
+    var byteA = parseInt(milBytes[0],16);
+    if(!isNaN(byteA)){ milOn = !!(byteA & 0x80); milDtcCount = byteA & 0x7F; }
+  }
+
+  // ═══ NIV (VIN, Mode 09) — c'est ça qui permet la "fiche technique" façon
+  // msinfo32 : specs officielles + rappels, même quand y'a zéro code. Tous
+  // les dongles/véhicules ne le supportent pas parfaitement — on gère l'échec
+  // proprement plutôt que de planter le scan. ═══
+  var vin = null;
+  try {
+    var vinRaw = await sendCmd('0902', 3000);
+    vin = parseVIN(vinRaw);
+    techLog(vin ? ('NIV lu : ' + vin) : 'NIV non lisible sur ce véhicule/dongle.');
+  } catch(e){ vin = null; }
+
+  lastResult = {
+    codes: codes, rpm: rpm, coolant: coolant, volt: volt, extra: extra, raw: dtcRaw,
+    mil: { on: milOn, count: milDtcCount },
+    vin: vin, specs: null, recalls: null,
+    specsStatus: vin ? 'loading' : 'no-vin'
+  };
   techLog('— Scan terminé —');
   renderResults();
   document.getElementById('btn-scan').disabled = false;
   document.getElementById('result-wrap').classList.add('show');
   document.getElementById('result-wrap').scrollIntoView({ behavior:'smooth', block:'start' });
+  if(vin) lookupVehicleSpecs(vin);
+}
+
+// Décode le NIV renvoyé en plusieurs trames par le mode 09 PID 02. Format
+// typique : "49 02 01 xx xx xx" / "49 02 02 xx xx xx xx" / ... — chaque
+// trame commence par 49 02 <index>, suivi des octets ASCII du NIV.
+function parseVIN(raw){
+  var clean = raw.replace(/[\r\n>]/g,' ').trim().toUpperCase();
+  var bytes = clean.split(/\s+/).filter(function(b){ return /^[0-9A-F]{2}$/.test(b); });
+  var chars = [];
+  for(var i=0;i<bytes.length;i++){
+    if(bytes[i]==='49' && bytes[i+1]==='02'){
+      var j = i+3; // saute "49 02 <index-de-trame>"
+      while(j < bytes.length && bytes[j] !== '49'){
+        var code = parseInt(bytes[j],16);
+        if(code >= 32 && code <= 126) chars.push(String.fromCharCode(code));
+        j++;
+      }
+      i = j-1;
+    }
+  }
+  var vin = chars.join('').replace(/[^A-HJ-NPR-Z0-9]/g,''); // le NIV exclut I, O, Q
+  if(vin.length > 17) vin = vin.slice(vin.length-17);
+  return (vin.length === 17) ? vin : null;
+}
+
+// Specs officielles (NHTSA vPIC, gratuit, décode le NIV) + rappels ouverts
+// (NHTSA recalls). Tourne en arrière-plan après l'affichage des résultats —
+// pas besoin d'attendre le réseau pour voir les codes/données live. Échoue
+// silencieusement si pas de connexion internet sur la tablette.
+function lookupVehicleSpecs(vin){
+  fetch('https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/'+encodeURIComponent(vin)+'?format=json')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var r0 = (data.Results||[])[0] || {};
+      if(!r0.Make){ lastResult.specsStatus = 'error'; renderTechCard(); return; }
+      lastResult.specs = {
+        make:r0.Make||'', model:r0.Model||'', year:r0.ModelYear||'',
+        trim:r0.Trim||'', cyl:r0.EngineCylinders||'', disp:r0.DisplacementL||'',
+        fuel:r0.FuelTypePrimary||'', trans:r0.TransmissionStyle||'',
+        drive:r0.DriveType||'', body:r0.BodyClass||'', plant:r0.PlantCountry||'',
+        gvwr:r0.GVWR||''
+      };
+      lastResult.specsStatus = 'ok';
+      renderTechCard();
+      var s = lastResult.specs;
+      if(s.make && s.model && s.year){
+        return fetch('https://api.nhtsa.gov/recalls/recallsByVehicle?make='+encodeURIComponent(s.make)+'&model='+encodeURIComponent(s.model)+'&modelYear='+encodeURIComponent(s.year))
+          .then(function(r){ return r.json(); })
+          .then(function(rd){
+            lastResult.recalls = (rd.results||[]).map(function(x){
+              return { component:x.Component||'', summary:x.Summary||'', consequence:x.Consequence||'', remedy:x.Remedy||'', date:x.ReportReceivedDate||'' };
+            });
+            renderTechCard();
+          });
+      }
+    })
+    .catch(function(){
+      lastResult.specsStatus = 'error';
+      renderTechCard();
+    });
 }
 
 function escapeHtml(s){
@@ -716,9 +847,107 @@ function renderResults(){
         + '</div>';
     }).join('');
   }
+  renderExtra();
+  renderTechCard();
 }
 function toggleWhy(i){
   document.getElementById('why-'+i).classList.toggle('show');
+}
+
+// ═══════════ FICHE TECHNIQUE — NIV + specs officielles NHTSA + rappels.
+// C'est LA section "toujours quelque chose à montrer" même sans code : voyant
+// moteur, specs manufacturier, rappels ouverts. Pas besoin d'un défaut pour
+// avoir de l'info concrète à donner au client. ═══════════
+function renderTechCard(){
+  var card = document.getElementById('tech-card');
+  var body = document.getElementById('tech-body');
+  if(!card || !body) return;
+  var r = lastResult;
+  var parts = [];
+
+  if(r.mil && r.mil.on !== null){
+    parts.push('<div class="mini-tile" style="grid-column:1/-1;text-align:left;display:flex;align-items:center;gap:8px">'
+      + '<span style="font-size:1.1rem">'+(r.mil.on?'🔴':'🟢')+'</span>'
+      + '<span style="font-size:12.5px;font-weight:700;color:var(--ink)">Voyant moteur '+(r.mil.on?'allumé':'éteint')+(r.mil.count?' · '+r.mil.count+' code(s) confirmé(s)':'')+'</span>'
+      + '</div>');
+  }
+
+  if(r.vin){
+    parts.push('<div style="grid-column:1/-1;font-family:var(--data);font-size:12px;color:var(--muted);background:var(--ivory);border-radius:10px;padding:8px 12px;letter-spacing:.03em">NIV : '+r.vin+'</div>');
+  }
+
+  if(r.specsStatus === 'loading'){
+    parts.push('<div style="grid-column:1/-1;font-size:12.5px;color:var(--muted)">⏳ Vérification des specs officielles et des rappels (NHTSA)...</div>');
+  } else if(r.specsStatus === 'error'){
+    parts.push('<div style="grid-column:1/-1;font-size:12px;color:var(--faint)">Specs officielles non disponibles pour l\'instant (pas de connexion internet sur la tablette, ou le NIV lu est invalide).</div>');
+  } else if(r.specs){
+    var s = r.specs;
+    var specTiles = [];
+    if(s.make||s.model||s.year) specTiles.push({ v:[s.year,s.make,s.model].filter(Boolean).join(' '), l:'Véhicule (officiel)' });
+    if(s.trim) specTiles.push({ v:s.trim, l:'Version' });
+    if(s.cyl || s.disp) specTiles.push({ v:[s.disp?s.disp+'L':'',s.cyl?s.cyl+' cyl':''].filter(Boolean).join(' · '), l:'Moteur' });
+    if(s.trans) specTiles.push({ v:s.trans, l:'Transmission' });
+    if(s.drive) specTiles.push({ v:s.drive, l:'Traction' });
+    if(s.body) specTiles.push({ v:s.body, l:'Carrosserie' });
+    if(s.plant) specTiles.push({ v:s.plant, l:'Assemblé en' });
+    if(s.gvwr) specTiles.push({ v:s.gvwr, l:'PNBV' });
+    specTiles.forEach(function(t){
+      if(!t.v) return;
+      parts.push('<div class="mini-tile"><div class="v">'+escapeHtml(t.v)+'</div><div class="l">'+t.l+'</div></div>');
+    });
+
+    if(r.recalls && r.recalls.length){
+      parts.push('<div style="grid-column:1/-1;margin-top:6px">'
+        + r.recalls.map(function(rc){
+            return '<div style="background:var(--roselt);border-radius:12px;padding:10px 12px;margin-bottom:6px">'
+              + '<div style="font-size:12.5px;font-weight:700;color:#B3261E">⚠ Rappel ouvert — '+escapeHtml(rc.component)+'</div>'
+              + (rc.summary ? '<div style="font-size:12px;color:#7A2E28;margin-top:3px;line-height:1.5">'+escapeHtml(rc.summary)+'</div>' : '')
+              + '<div style="font-size:11px;color:#7A2E28;margin-top:4px">👉 Réparation gratuite chez le concessionnaire.</div>'
+              + '</div>';
+          }).join('')
+        + '</div>');
+    } else if(r.recalls){
+      parts.push('<div style="grid-column:1/-1;font-size:12.5px;color:var(--mint);font-weight:700;margin-top:4px">✓ Aucun rappel ouvert trouvé (NHTSA)</div>');
+    }
+  } else if(r.specsStatus === 'no-vin'){
+    parts.push('<div style="grid-column:1/-1;font-size:12px;color:var(--faint)">Ce dongle/véhicule n\'a pas retourné de NIV lisible — specs officielles et rappels indisponibles pour ce scan.</div>');
+  }
+
+  if(!parts.length){ card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  body.innerHTML = '<div class="extra-grid">'+parts.join('')+'</div>';
+}
+
+// ═══════════ BILAN ADDITIONNEL (PIDs standards — pas de "code" mais utile pareil) ═══════════
+function renderExtra(){
+  var ex = lastResult.extra || {};
+  var tiles = [];
+  if(ex.load != null) tiles.push({ v: ex.load+'%', l:'Charge moteur' });
+  var trim = ex.ltft != null ? ex.ltft : ex.stft;
+  var trimIsLong = ex.ltft != null;
+  if(trim != null){
+    var trimWarn = Math.abs(trim) > 10;
+    tiles.push({ v:(trim>0?'+':'')+trim+'%', l:'Mélange air/essence' + (trimIsLong?' (long terme)':' (court terme)'), warn: trimWarn });
+  }
+  if(ex.iat != null) tiles.push({ v: ex.iat+'°C', l:'Air admission' });
+  if(ex.fuelLevel != null) tiles.push({ v: ex.fuelLevel+'%', l:'Niveau essence' });
+  if(ex.distSinceClear != null) tiles.push({ v: ex.distSinceClear+' km', l:'Depuis effacement codes' });
+
+  var card = document.getElementById('extra-card');
+  if(!tiles.length){ card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  document.getElementById('extra-grid').innerHTML = tiles.map(function(t){
+    return '<div class="mini-tile"><div class="v'+(t.warn?' warn':'')+'">'+escapeHtml(t.v)+'</div><div class="l">'+t.l+'</div></div>';
+  }).join('');
+
+  var notes = [];
+  if(trim != null && Math.abs(trim) > 10){
+    notes.push('⚠ Correction du mélange air/essence anormalement élevée — peut indiquer une fuite d\'admission, un capteur encrassé ou un problème d\'injection à faire vérifier.');
+  }
+  if(ex.distSinceClear != null && ex.distSinceClear < 50 && lastResult.codes.length === 0){
+    notes.push('ℹ Les codes ont été effacés il y a moins de 50 km — pas nécessairement un problème, mais bon à savoir si l\'auto vient d\'être vendue ou réparée récemment.');
+  }
+  document.getElementById('extra-note').textContent = notes.join(' ');
 }
 
 // ═══════════ SAUVEGARDE CHEZ GREAZ (crée un lead dans le dashboard existant) ═══════════
@@ -749,7 +978,26 @@ function saveScanLead(){
   if(lastResult.rpm!=null) live.push(lastResult.rpm + ' RPM');
   if(lastResult.coolant!=null) live.push(lastResult.coolant + '°C moteur');
   if(lastResult.volt!=null) live.push(lastResult.volt + 'V batterie 12V');
+  var ex = lastResult.extra || {};
+  if(ex.load!=null) live.push(ex.load + '% charge moteur');
+  var trimFinal = ex.ltft != null ? ex.ltft : ex.stft;
+  if(trimFinal!=null) live.push((trimFinal>0?'+':'')+trimFinal + '% mélange' + (ex.ltft!=null?' (long terme)':' (court terme)'));
+  if(ex.iat!=null) live.push(ex.iat + '°C air admission');
+  if(ex.fuelLevel!=null) live.push(ex.fuelLevel + '% essence');
+  if(ex.distSinceClear!=null) live.push(ex.distSinceClear + ' km depuis effacement codes');
   if(live.length) descLines.push('Données live : ' + live.join(' · '));
+  if(lastResult.mil && lastResult.mil.on !== null){
+    descLines.push('Voyant moteur : ' + (lastResult.mil.on ? 'ALLUMÉ' : 'éteint') + (lastResult.mil.count ? ' (' + lastResult.mil.count + ' code(s) confirmé(s))' : ''));
+  }
+  if(lastResult.vin) descLines.push('NIV : ' + lastResult.vin);
+  if(lastResult.specs){
+    var sp = lastResult.specs;
+    var spBits = [[sp.year,sp.make,sp.model].filter(Boolean).join(' '), sp.trim, [sp.disp?sp.disp+'L':'',sp.cyl?sp.cyl+' cyl':''].filter(Boolean).join(' '), sp.trans, sp.drive].filter(Boolean);
+    if(spBits.length) descLines.push('Specs officielles (NHTSA) : ' + spBits.join(' · '));
+  }
+  if(lastResult.recalls && lastResult.recalls.length){
+    descLines.push('⚠ ' + lastResult.recalls.length + ' rappel(s) ouvert(s) (NHTSA) : ' + lastResult.recalls.map(function(rc){ return rc.component; }).join(', '));
+  }
   var attn = _checklistState.filter(function(i){ return i.status === 'attn'; });
   var ok = _checklistState.filter(function(i){ return i.status === 'ok'; });
   if(attn.length) descLines.push('⚠ Inspection visuelle — à surveiller : ' + attn.map(function(i){ return i.label; }).join(', '));
