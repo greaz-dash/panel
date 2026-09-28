@@ -338,10 +338,38 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
   .tool-btn{padding:11px 14px;font-size:13px;border-radius:10px;flex:1;min-width:auto;text-align:center;justify-content:center}
   .filter-btn{padding:10px 15px;font-size:13px}
 
-  /* Cartes / listes : boutons d'action empilés pis tactiles */
-  .directory-actions{flex-wrap:wrap;gap:8px}
-  .directory-actions .abtn{flex:1 1 calc(50% - 4px);justify-content:center;padding:12px 10px;font-size:12.5px;border-radius:10px}
-  .abtn{padding:11px 13px;font-size:12.5px}
+  /* Rangée de filtres (chips) sans champ de recherche : défilement horizontal
+     sur une seule ligne au lieu de s'empiler sur 2-3 lignes — beaucoup plus
+     rapide à scanner sur téléphone. */
+  .toolbar:has(.filter-btn):not(:has(.search-input)){flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+  .toolbar:has(.filter-btn):not(:has(.search-input))::-webkit-scrollbar{height:0;display:none}
+  .toolbar:has(.filter-btn):not(:has(.search-input)){scrollbar-width:none}
+  .toolbar:has(.filter-btn):not(:has(.search-input)) .filter-btn{flex:0 0 auto}
+
+  /* Rangées de statistiques (répertoire, trafic, membres...) : une seule
+     ligne qui défile plutôt que 2-4 rangées de cartes empilées. */
+  #crm-stats, #traffic-stats, #mbr-stats{flex-wrap:nowrap!important;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+  #crm-stats::-webkit-scrollbar, #traffic-stats::-webkit-scrollbar, #mbr-stats::-webkit-scrollbar{height:0;display:none}
+  #crm-stats, #traffic-stats, #mbr-stats{scrollbar-width:none}
+  #crm-stats > div, #traffic-stats > div, #mbr-stats > div{min-width:112px!important;flex:0 0 auto!important;padding:9px 12px!important}
+
+  /* Bandeaux d'explication en haut de chaque onglet : repliés par défaut
+     (juste le titre en gras visible), on tape dessus pour voir le texte
+     complet — évite d'avoir un mur de texte avant même de voir les données. */
+  .hint-banner-mobile{max-height:2.5em;overflow:hidden;position:relative;cursor:pointer;padding-right:30px!important}
+  .hint-banner-mobile::after{content:'▾ plus';position:absolute;right:10px;bottom:8px;font-size:10px;font-weight:700;opacity:.65}
+  .hint-banner-mobile.expanded{max-height:200px}
+  .hint-banner-mobile.expanded::after{content:'▴ moins'}
+
+  /* Cartes des listes (répertoire, réservations, messages...) : plus
+     compactes, et on cache le détail secondaire (km, adresse) tant que la
+     carte n'est pas ouverte — juste le véhicule reste visible d'un coup d'œil. */
+  .card-top{padding:10px 12px;gap:9px}
+  .card-name{font-size:13.5px}
+  .card-name span{font-size:9.5px!important;padding:1px 6px!important}
+  .card-meta{flex-wrap:nowrap;overflow:hidden}
+  .card-meta .cm-extra{display:none}
+  .crm-badge-acct{display:none}
 
   /* Grilles d'infos : une ou deux colonnes max */
   .info-grid{grid-template-columns:1fr 1fr!important}
@@ -2061,10 +2089,10 @@ function crmCard(c){
     +"<div style='width:42px;height:42px;border-radius:50%;background:#E6F6EF;color:#0B7D57;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex-shrink:0'>"+ini+"</div>"
     +"<div><div class='card-name'>"+c.name
     +(c.manual?" <span style='font-size:10px;font-weight:700;color:#0B7D57;background:#E6F6EF;padding:1px 7px;border-radius:8px;vertical-align:middle'>✎ ajouté</span>":"")
-    +(c.hasAccount?" <span style='font-size:10px;font-weight:700;color:#0F2ACC;background:#EEF1FF;padding:1px 7px;border-radius:8px;vertical-align:middle'>✅ Compte Greaz</span>":"")
+    +(c.hasAccount?" <span class='crm-badge-acct' style='font-size:10px;font-weight:700;color:#0F2ACC;background:#EEF1FF;padding:1px 7px;border-radius:8px;vertical-align:middle'>✅ Compte Greaz</span>":"")
     +(c.hasAccount && c.rdvCount===0?" <span style='font-size:10px;font-weight:700;color:#92400E;background:#FEF3C7;padding:1px 7px;border-radius:8px;vertical-align:middle'>⚡ Inscrit, aucun RDV</span>":"")
     +"</div>"
-    +"<div class='card-meta'><span>"+(c.vehicle||'Véhicule non précisé')+"</span>"+(c.km?"<span>· 📊 "+Number(c.km).toLocaleString('fr-CA')+" km</span>":"")+((c.city||c.address)?"<span>· 📍 "+(c.address||c.city)+"</span>":"")+"</div></div>"
+    +"<div class='card-meta'><span>"+(c.vehicle||'Véhicule non précisé')+"</span>"+(c.km?"<span class='cm-extra'>· 📊 "+Number(c.km).toLocaleString('fr-CA')+" km</span>":"")+((c.city||c.address)?"<span class='cm-extra'>· 📍 "+(c.address||c.city)+"</span>":"")+"</div></div>"
     +"</div>"
     +"<div class='card-right'><span class='sbadge' style='background:#E6F6EF;color:#0B7D57'>"+c.rdvCount+" RDV</span></div>"
     +"</div>"
@@ -5853,6 +5881,21 @@ function dl(content, filename){
   URL.revokeObjectURL(url);
 }
 function today(){ return new Date().toISOString().slice(0,10); }
+
+/* Bandeaux d'explication (en haut de chaque onglet) : sur téléphone, on les
+   replie par défaut et on tape dessus pour lire le texte complet — sur
+   ordinateur ils restent tels quels. Les bandeaux sont déjà dans le HTML au
+   chargement (pas re-générés par JS), donc un seul passage suffit. */
+function initMobileHintBanners(){
+  if(window.innerWidth > 680) return;
+  document.querySelectorAll('div[style*="border-radius:10px;padding:12px 14px;font-size:12.5px"]').forEach(function(el){
+    if(el.dataset.hintInit) return;
+    el.dataset.hintInit = '1';
+    el.classList.add('hint-banner-mobile');
+    el.addEventListener('click', function(){ el.classList.toggle('expanded'); });
+  });
+}
+initMobileHintBanners();
 
 /* Mise à jour automatique de l'app installée — sans que l'admin ait besoin
    de vider son cache lui-même. Dès qu'une nouvelle version de sw-dashboard.js
