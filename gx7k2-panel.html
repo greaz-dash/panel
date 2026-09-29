@@ -599,6 +599,14 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
       <div class="toolbar"><button class="tool-btn" onclick="addMarketCityRow()">➕ Ajouter une ville</button></div>
       <div id="mkt-cities-list" style="margin-bottom:1rem"></div>
       <button class="tool-btn green" onclick="saveMarketCities()">💾 Enregistrer les prix par ville</button>
+
+      <div class="section-title" style="margin-top:1.75rem">🚗 Valeur de revente par modèle</div>
+      <div style="font-size:12px;color:var(--muted,#6B7280);margin-bottom:.75rem">Rentre des prix réels que tu vois passer (Kijiji, Marketplace, un client qui te le dit) pour un modèle donné à un kilométrage donné — avec 2-3 points ça donne une courbe, pis tu peux chercher n'importe quel modèle vite pour avoir une estimation à n'importe quel kilométrage. Cette même courbe s'affiche aussi au client dans son espace, sur SON véhicule.</div>
+      <div class="toolbar">
+        <input class="search-input" type="text" id="vv-search" placeholder="🔍 Chercher une marque, un modèle, une année..." oninput="renderVehicleValues()">
+        <button class="tool-btn green" onclick="openAddVehicleValueForm()">➕ Ajouter un modèle</button>
+      </div>
+      <div id="vv-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
     </div>
 
     <!-- LOCATION AUTO (demandes "Louer ton auto" des clients) -->
@@ -1475,7 +1483,12 @@ function loadMarketPrices(){
       ? ('Dernière mise à jour : '+d.updated_at.toDate().toLocaleDateString('fr-CA',{day:'numeric',month:'long',year:'numeric'})+' à '+d.updated_at.toDate().toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'}))
       : 'Pas encore publié.';
     _mktCities = Array.isArray(d.city_prices) ? d.city_prices.slice() : [];
+    // Si aucune ville n'a encore été ajoutée, on en pré-remplit une par
+    // défaut tout de suite — sinon le champ "Vidange $" reste caché derrière
+    // le bouton "Ajouter une ville" et personne ne le voit jamais.
+    if(!_mktCities.length) _mktCities.push({ city:'Québec (moyenne)', vidange:0, pneus:0 });
     renderMarketCities();
+    loadVehicleValues();
   }).catch(function(e){ console.log('Prix marché:', e); });
 }
 
@@ -1535,6 +1548,245 @@ async function saveMarketCities(){
     alert('✓ Prix par ville enregistrés.');
     _mktCities = clean;
     renderMarketCities();
+  } catch(e){ alert('Erreur : '+(e.message||e)); }
+}
+
+/* ══════════════════════════════════════════
+   VALEUR DE REVENTE PAR MODÈLE — base de comparables qu'on bâtit nous-mêmes
+   (pas d'API externe : on entre des vrais prix vus sur le marché, à un
+   kilométrage donné). Avec 2+ points on trace une courbe et on peut estimer
+   la valeur à n'importe quel kilométrage par interpolation. La même donnée
+   nourrit aussi la courbe affichée au client sur SON véhicule (greaz-site.html,
+   collection Firestore `vehicle_values` partagée).
+   ══════════════════════════════════════════ */
+var _vehicleValues = [];
+
+function vvKey(make, model, year){
+  return [make, model, year].map(function(s){
+    return String(s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+  }).join('_');
+}
+
+function loadVehicleValues(){
+  var el = document.getElementById('vv-list');
+  db.collection('vehicle_values').get().then(function(snap){
+    _vehicleValues = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    _vehicleValues.forEach(function(v){ v.points = (v.points||[]).slice().sort(function(a,b){ return a.km-b.km; }); });
+    _vehicleValues.sort(function(a,b){ return (a.make+a.model+a.year).localeCompare(b.make+b.model+b.year); });
+    renderVehicleValues();
+  }).catch(function(e){ if(el) el.innerHTML = '<div class="loading">⚠️ '+e.message+'</div>'; });
+}
+
+function renderVehicleValues(){
+  var el = document.getElementById('vv-list');
+  if(!el) return;
+  var q = (document.getElementById('vv-search').value||'').trim().toLowerCase();
+  var list = _vehicleValues.filter(function(v){
+    if(!q) return true;
+    return (v.make+' '+v.model+' '+v.year).toLowerCase().indexOf(q) !== -1;
+  });
+  if(!list.length){
+    el.innerHTML = '<div style="text-align:center;padding:2.5rem;color:var(--muted)"><div style="font-size:2.2rem;margin-bottom:.5rem">🚗</div>'+(q?'Aucun modèle trouvé.':'Aucun modèle ajouté pour l\'instant.')+'</div>';
+    return;
+  }
+  el.innerHTML = '<div class="cards">' + list.map(vvCard).join('') + '</div>';
+}
+
+function vvInterpolate(points, km){
+  if(!points.length) return null;
+  if(points.length === 1) return points[0].price;
+  km = Number(km);
+  if(km <= points[0].km){
+    var p0=points[0], p1=points[1];
+    return Math.round(p0.price + (km-p0.km) * (p1.price-p0.price)/(p1.km-p0.km));
+  }
+  for(var i=0;i<points.length-1;i++){
+    var a=points[i], b=points[i+1];
+    if(km >= a.km && km <= b.km) return Math.round(a.price + (km-a.km) * (b.price-a.price)/(b.km-a.km));
+  }
+  var last1=points[points.length-2], last2=points[points.length-1];
+  return Math.round(last2.price + (km-last2.km) * (last2.price-last1.price)/(last2.km-last1.km));
+}
+
+function vvCard(v){
+  var sid = v.id.replace(/[^a-z0-9]/gi,'');
+  var title = v.make+' '+v.model+' '+v.year;
+  var latest = v.points.length ? '~'+Number(v.points[v.points.length-1].price).toLocaleString('fr-CA')+' $ à '+Number(v.points[v.points.length-1].km).toLocaleString('fr-CA')+' km' : 'Aucun point encore';
+  return "<div class='card' style='border-left:4px solid #1A3CFF'>"
+    +"<div class='card-top' onclick='toggleCard(\""+sid+"\")'>"
+    +"<div class='card-main'>"
+    +"<div class='card-name'>"+title+"</div>"
+    +"<div class='card-meta'><span>"+latest+"</span></div>"
+    +"</div></div>"
+    +"<div class='card-right'><span class='sbadge' style='background:#EEF1FF;color:#0F2ACC'>"+v.points.length+" pt"+(v.points.length>1?'s':'')+"</span></div>"
+    +"</div>"
+    +"<div class='card-body' id='body-"+sid+"'>"
+    + (v.points.length >= 2 ? vehicleValueCurveSvg(v, sid) : '<div style="font-size:12px;color:var(--muted);margin:10px 0">Ajoute au moins 2 points (kilométrage + prix) pour voir apparaître une courbe.</div>')
+    +"<div style='margin-top:12px'><div class='il' style='margin-bottom:6px'>📍 Points entrés</div>"
+    + (v.points.length ? v.points.map(function(p,i){
+        return "<div style='display:flex;align-items:center;gap:10px;padding:7px 10px;background:var(--surface);border-radius:8px;margin-bottom:5px;font-size:12.5px'>"
+          +"<span style='flex:1'><b>"+Number(p.price).toLocaleString('fr-CA')+" $</b> à "+Number(p.km).toLocaleString('fr-CA')+" km</span>"
+          +"<span style='color:var(--muted);font-size:11px'>"+(p.date||'')+"</span>"
+          +"<button class='close-btn' onclick='deleteVehicleValuePoint(\""+v.id+"\","+i+")'>✕</button>"
+          +"</div>";
+      }).join('') : "<div style='font-size:12px;color:var(--muted)'>Aucun point pour l'instant.</div>")
+    +"</div>"
+    +"<div style='display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-top:10px;background:#FAFAFB;border:1px solid #eee;border-radius:10px;padding:10px'>"
+    +"<div><label style='font-size:11px;font-weight:600;color:#6B7280;display:block;margin-bottom:3px'>Kilométrage</label><input type='number' id='vv-km-"+sid+"' placeholder='45000' style='width:110px;padding:7px 9px;border:1px solid #e5e7eb;border-radius:7px;font-size:12.5px'></div>"
+    +"<div><label style='font-size:11px;font-weight:600;color:#6B7280;display:block;margin-bottom:3px'>Prix vu ($)</label><input type='number' id='vv-price-"+sid+"' placeholder='24000' style='width:110px;padding:7px 9px;border:1px solid #e5e7eb;border-radius:7px;font-size:12.5px'></div>"
+    +"<button class='tool-btn green' onclick='addVehicleValuePoint(\""+v.id+"\",\""+sid+"\")'>➕ Ajouter ce point</button>"
+    +"</div>"
+    + (v.points.length ? "<div style='margin-top:10px;background:#EEF1FF;border:1px solid #BFDBFE;border-radius:10px;padding:10px'>"
+      +"<label style='font-size:11px;font-weight:600;color:#0F2ACC;display:block;margin-bottom:3px'>🔍 Estimer à un kilométrage précis</label>"
+      +"<div style='display:flex;gap:8px;align-items:center'>"
+      +"<input type='number' id='vv-est-"+sid+"' placeholder='ex. 45000' oninput='vvShowEstimate(\""+v.id+"\",\""+sid+"\")' style='width:120px;padding:7px 9px;border:1px solid #BFDBFE;border-radius:7px;font-size:12.5px;background:white'>"
+      +"<span id='vv-est-out-"+sid+"' style='font-size:13px;font-weight:700;color:#0F2ACC'></span>"
+      +"</div></div>" : "")
+    +"<div class='action-btns' style='margin-top:12px'>"
+    +"<button class='abtn abtn-del' onclick='deleteVehicleValueModel(\""+v.id+"\")'>🗑 Retirer ce modèle</button>"
+    +"</div>"
+    +"</div>";
+}
+
+function vvShowEstimate(id, sid){
+  var v = _vehicleValues.find(function(x){ return x.id===id; });
+  var out = document.getElementById('vv-est-out-'+sid);
+  var kmEl = document.getElementById('vv-est-'+sid);
+  if(!v || !out || !kmEl) return;
+  var km = parseInt(kmEl.value,10);
+  if(!km || km<=0){ out.textContent=''; return; }
+  var est = vvInterpolate(v.points, km);
+  out.textContent = est!=null ? '≈ '+est.toLocaleString('fr-CA')+' $' : '';
+}
+
+/* Courbe SVG — un seul trait (une seule teinte, pas de double axe), points
+   directement étiquetés au premier/dernier, survol pour voir chaque point. */
+function vehicleValueCurveSvg(v, sid){
+  var pts = v.points;
+  var W = 600, H = 160, padL = 46, padR = 14, padT = 16, padB = 28;
+  var kms = pts.map(function(p){ return p.km; });
+  var prices = pts.map(function(p){ return p.price; });
+  var kmMin = Math.min.apply(null, kms), kmMax = Math.max.apply(null, kms);
+  var pMin = Math.min.apply(null, prices), pMax = Math.max.apply(null, prices);
+  if(kmMin===kmMax){ kmMin -= 1000; kmMax += 1000; }
+  if(pMin===pMax){ pMin -= 1000; pMax += 1000; }
+  var pPadding = (pMax-pMin) * 0.15;
+  pMin -= pPadding; pMax += pPadding;
+  function x(km){ return padL + (km-kmMin)/(kmMax-kmMin) * (W-padL-padR); }
+  function y(price){ return H-padB - (price-pMin)/(pMax-pMin) * (H-padT-padB); }
+  var linePts = pts.map(function(p){ return x(p.km)+','+y(p.price); }).join(' ');
+  var circles = pts.map(function(p,i){
+    return '<circle cx="'+x(p.km)+'" cy="'+y(p.price)+'" r="4" fill="#fff" stroke="#1A3CFF" stroke-width="2"></circle>'
+      + '<circle cx="'+x(p.km)+'" cy="'+y(p.price)+'" r="11" fill="transparent" style="cursor:pointer" onmouseenter="vvTipShow(event,\''+sid+'\','+i+')" onmousemove="vvTipMove(event,\''+sid+'\')" onmouseleave="vvTipHide(\''+sid+'\')"></circle>';
+  }).join('');
+  var firstLabel = '<text x="'+x(pts[0].km)+'" y="'+(y(pts[0].price)-10)+'" font-size="10.5" font-weight="700" fill="#1A3CFF" text-anchor="start">'+Number(pts[0].price).toLocaleString('fr-CA')+' $</text>';
+  var lastP = pts[pts.length-1];
+  var lastLabel = '<text x="'+x(lastP.km)+'" y="'+(y(lastP.price)-10)+'" font-size="10.5" font-weight="700" fill="#1A3CFF" text-anchor="end">'+Number(lastP.price).toLocaleString('fr-CA')+' $</text>';
+  var axisKmLabels = '<text x="'+padL+'" y="'+(H-8)+'" font-size="10" fill="#9CA3AF">'+Number(kmMin<0?0:Math.round(kmMin)).toLocaleString('fr-CA')+' km</text>'
+    + '<text x="'+(W-padR)+'" y="'+(H-8)+'" font-size="10" fill="#9CA3AF" text-anchor="end">'+Number(Math.round(kmMax)).toLocaleString('fr-CA')+' km</text>';
+  return '<div style="position:relative;background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 6px 4px;margin:8px 0">'
+    + '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block" preserveAspectRatio="none">'
+    + '<line x1="'+padL+'" y1="'+(H-padB)+'" x2="'+(W-padR)+'" y2="'+(H-padB)+'" stroke="#E5E7EB" stroke-width="1"></line>'
+    + '<polyline points="'+linePts+'" fill="none" stroke="#1A3CFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polyline>'
+    + circles + firstLabel + (pts.length>1?lastLabel:'') + axisKmLabels
+    + '</svg>'
+    + '<div id="vv-tip-'+sid+'" style="display:none;position:absolute;background:#171A20;color:#fff;padding:7px 10px;border-radius:8px;font-size:11.5px;line-height:1.5;pointer-events:none;z-index:20;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.22)"></div>'
+    + '</div>';
+}
+function vvTipShow(ev, sid, idx){
+  var v = _vehicleValues.find(function(x){ return x.id.replace(/[^a-z0-9]/gi,'')===sid; });
+  if(!v) return;
+  var p = v.points[idx];
+  var tip = document.getElementById('vv-tip-'+sid);
+  if(!tip || !p) return;
+  tip.innerHTML = '<b>'+Number(p.price).toLocaleString('fr-CA')+' $</b> à '+Number(p.km).toLocaleString('fr-CA')+' km'+(p.date?('<br><span style="opacity:.7">'+p.date+'</span>'):'');
+  tip.style.display = 'block';
+  vvTipMove(ev, sid);
+}
+function vvTipMove(ev, sid){
+  var tip = document.getElementById('vv-tip-'+sid);
+  if(!tip) return;
+  var wrap = tip.parentElement;
+  var rect = wrap.getBoundingClientRect();
+  var x = ev.clientX - rect.left + 12;
+  var y = ev.clientY - rect.top - 10;
+  if(x + 140 > rect.width) x = ev.clientX - rect.left - 150;
+  tip.style.left = x+'px';
+  tip.style.top = y+'px';
+}
+function vvTipHide(sid){
+  var tip = document.getElementById('vv-tip-'+sid);
+  if(tip) tip.style.display = 'none';
+}
+
+function openAddVehicleValueForm(){
+  var modal = document.createElement('div');
+  modal.id = 'vv-add-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(23,26,32,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.innerHTML = '<div style="background:white;border-radius:18px;padding:1.75rem;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25)">'
+    +'<h3 style="font-size:17px;font-weight:800;margin-bottom:1rem">➕ Ajouter un modèle</h3>'
+    +'<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Marque *</label><input id="vv-new-make" type="text" placeholder="Ford" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px"></div>'
+    +'<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Modèle *</label><input id="vv-new-model" type="text" placeholder="Mustang Mach-E" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px"></div>'
+    +'<div style="margin-bottom:1.25rem"><label style="font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Année *</label><input id="vv-new-year" type="number" placeholder="2021" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px"></div>'
+    +'<div id="vv-new-err" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:9px 12px;border-radius:8px;font-size:12.5px;margin-bottom:1rem"></div>'
+    +'<div style="display:flex;gap:9px">'
+    +'<button onclick="saveNewVehicleValueModel()" style="flex:1;padding:13px;background:#0E9F6E;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Ajouter</button>'
+    +'<button onclick="document.getElementById(\'vv-add-modal\').remove()" style="padding:13px 18px;background:#F3F4F6;color:#6B7280;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Annuler</button>'
+    +'</div></div>';
+  document.body.appendChild(modal);
+  modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
+  setTimeout(function(){ var f=document.getElementById('vv-new-make'); if(f) f.focus(); }, 50);
+}
+
+async function saveNewVehicleValueModel(){
+  var make = (document.getElementById('vv-new-make').value||'').trim();
+  var model = (document.getElementById('vv-new-model').value||'').trim();
+  var year = parseInt(document.getElementById('vv-new-year').value,10);
+  var errEl = document.getElementById('vv-new-err');
+  if(!make || !model || !year){ errEl.textContent = 'Marque, modèle et année sont obligatoires.'; errEl.style.display='block'; return; }
+  var id = vvKey(make, model, year);
+  try {
+    await db.collection('vehicle_values').doc(id).set({
+      make: make, model: model, year: year, points: [],
+      updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge:true });
+    document.getElementById('vv-add-modal').remove();
+    loadVehicleValues();
+  } catch(e){ errEl.textContent = 'Erreur : '+(e.message||e); errEl.style.display='block'; }
+}
+
+async function addVehicleValuePoint(id, sid){
+  var km = parseInt(document.getElementById('vv-km-'+sid).value,10);
+  var price = parseFloat(document.getElementById('vv-price-'+sid).value);
+  if(!km || km<=0 || !price || price<=0){ alert('Entre un kilométrage et un prix valides.'); return; }
+  var v = _vehicleValues.find(function(x){ return x.id===id; });
+  if(!v) return;
+  var newPoints = v.points.concat([{ km:km, price:price, date: today() }]).sort(function(a,b){ return a.km-b.km; });
+  try {
+    await db.collection('vehicle_values').doc(id).set({ points: newPoints, updated_at: firebase.firestore.FieldValue.serverTimestamp() }, { merge:true });
+    v.points = newPoints;
+    renderVehicleValues();
+  } catch(e){ alert('Erreur : '+(e.message||e)); }
+}
+
+async function deleteVehicleValuePoint(id, idx){
+  var v = _vehicleValues.find(function(x){ return x.id===id; });
+  if(!v) return;
+  var newPoints = v.points.slice(); newPoints.splice(idx,1);
+  try {
+    await db.collection('vehicle_values').doc(id).set({ points: newPoints, updated_at: firebase.firestore.FieldValue.serverTimestamp() }, { merge:true });
+    v.points = newPoints;
+    renderVehicleValues();
+  } catch(e){ alert('Erreur : '+(e.message||e)); }
+}
+
+async function deleteVehicleValueModel(id){
+  var v = _vehicleValues.find(function(x){ return x.id===id; });
+  if(!v || !confirm('Retirer "'+v.make+' '+v.model+' '+v.year+'" et tous ses points ? Cette action est irréversible.')) return;
+  try {
+    await db.collection('vehicle_values').doc(id).delete();
+    _vehicleValues = _vehicleValues.filter(function(x){ return x.id!==id; });
+    renderVehicleValues();
   } catch(e){ alert('Erreur : '+(e.message||e)); }
 }
 
@@ -2301,6 +2553,7 @@ function openClientDossier(skey){
     +'<h3 style="font-size:17px;font-weight:800;margin-bottom:2px">📋 Dossier — '+c.name+'</h3>'
     +'<p style="font-size:12.5px;color:#6B7280;margin-bottom:.6rem">'+(c.vehicle||'Véhicule non précisé')+' · Ce que tu ajoutes ici, il le voit dans son espace Greaz</p>'
     +'<div id="dossier-veh-photo-box" style="margin-bottom:1.1rem">⏳ Chargement de la photo...</div>'
+    +'<div id="dossier-suggestions-box" style="margin-bottom:1.1rem"></div>'
     +'<div id="dossier-stat" style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:10px 13px;font-size:13px;color:#15803D;font-weight:700;margin-bottom:1.1rem">⏳ Chargement...</div>'
     +'<div style="border-top:1px solid #F3F4F6;padding-top:1rem;margin-bottom:1rem">'
     +'<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7280;margin-bottom:8px">➕ Ajouter un entretien / RV</div>'
@@ -2352,10 +2605,101 @@ function loadDossierVehiclePhoto(){
     var d = snap.data() || {};
     _dossierVehicles = d.vehicles || [];
     renderDossierVehiclePhoto();
+    renderDossierSuggestions();
   }).catch(function(){
     _dossierVehicles = [];
     renderDossierVehiclePhoto();
+    renderDossierSuggestions();
   });
+}
+
+/* ══════════ SUGGESTIONS DU CLIENT — MIROIR ══════════
+   Le calendrier d'entretien affiché dans le "Mon espace" du client (calcul
+   par kilométrage, même table que greaz-entretien.html) n'était visible que
+   dans SON navigateur à lui — nous, côté admin, on n'avait aucune idée de ce
+   qu'il voyait. On refait exactement le même calcul ici, à partir des mêmes
+   données (kilométrage + marque/modèle du véhicule, déjà dans son compte),
+   pour voir mot pour mot ce qu'il a sous les yeux et pouvoir lui en parler
+   intelligemment. Table volontairement identique à celle de greaz-site.html —
+   si tu changes une des deux, change l'autre pour rester cohérent. */
+var DASH_MAINTENANCE = [
+  { nom:'Vidange d\'huile + filtre', ic:'🛢️', km:10000, imp:'critique', t:['g','d','h'] },
+  { nom:'Rotation des pneus', ic:'🔄', km:10000, imp:'recommande', t:['g','d','h','e'] },
+  { nom:'Inspection des freins', ic:'🔍', km:20000, imp:'recommande', t:['g','d','h','e'] },
+  { nom:'Filtre à air habitacle', ic:'🌬️', km:25000, imp:'preventif', t:['g','d','h','e'] },
+  { nom:'Filtre à air moteur', ic:'💨', km:30000, imp:'recommande', t:['g','d','h'] },
+  { nom:'Alignement des roues', ic:'📐', km:40000, imp:'recommande', t:['g','d','h','e'] },
+  { nom:'Liquide de frein', ic:'🧪', km:45000, imp:'recommande', t:['g','d','h','e'] },
+  { nom:'Plaquettes de frein (avant)', ic:'🛑', km:50000, imp:'critique', t:['g','d','h'] },
+  { nom:'Plaquettes de frein (avant)', ic:'🛑', km:90000, imp:'recommande', t:['e'] },
+  { nom:'Batterie de démarrage (12V)', ic:'🔋', km:70000, imp:'preventif', t:['g','d','h','e'] },
+  { nom:'Bougies d\'allumage', ic:'⚡', km:100000, imp:'recommande', t:['g','h'] },
+  { nom:'Liquide de refroidissement (moteur)', ic:'❄️', km:100000, imp:'critique', t:['g','d','h'] },
+  { nom:'Liquide de transmission', ic:'⚙️', km:90000, imp:'critique', t:['g','d','h'] },
+  { nom:'Disques de frein', ic:'💿', km:95000, imp:'recommande', t:['g','d','h','e'] },
+  { nom:'Pneus (jeu de 4)', ic:'🛞', km:60000, imp:'critique', t:['e'] },
+  { nom:'Courroie de distribution', ic:'🔗', km:130000, imp:'critique', t:['g','d'] },
+  { nom:'Vérification système haute tension', ic:'⚡', km:30000, imp:'recommande', t:['e'] },
+  { nom:'Liquide de refroidissement (batterie)', ic:'🔋', km:100000, imp:'critique', t:['e'] },
+];
+var DASH_MAINT_EV_KEYWORDS = ['mach-e','mach e','tesla','model 3','model y','model s','model x','bolt','leaf','ioniq 5','ioniq5','ioniq 6','ev6','id.4','id4','ariya','e-tron','etron','i4','ix','eqs','eqb','eqe','taycan','polestar','lyriq','blazer ev','equinox ev','lightning','solterra','bz4x','kona electric','niro ev','soul ev'];
+var DASH_MAINT_HYBRID_KEYWORDS = ['prius','hybrid','hybride','rav4 prime','phev'];
+function dashVehicleFuelCode(v){
+  var f = (v.fuel||'').toLowerCase();
+  if(f.indexOf('lectr')>-1) return 'e';
+  if(f.indexOf('hybrid')>-1) return 'h';
+  if(f.indexOf('diesel')>-1) return 'd';
+  if(f.indexOf('essence')>-1) return 'g';
+  var mk = ((v.make||'')+' '+(v.model||'')).toLowerCase();
+  if(DASH_MAINT_EV_KEYWORDS.some(function(k){ return mk.indexOf(k)>-1; })) return 'e';
+  if(DASH_MAINT_HYBRID_KEYWORDS.some(function(k){ return mk.indexOf(k)>-1; })) return 'h';
+  return 'g';
+}
+function dashComputeMaintenancePlan(v){
+  var km = parseInt(v.km, 10);
+  if(!km || km <= 0) return [];
+  var code = dashVehicleFuelCode(v);
+  return DASH_MAINTENANCE
+    .filter(function(m){ return m.t.indexOf(code) > -1; })
+    .map(function(m){
+      var nextDue = Math.ceil((km + 1) / m.km) * m.km;
+      var remaining = nextDue - km;
+      var status = remaining <= 500 ? 'due' : (remaining <= 2500 ? 'soon' : 'ok');
+      return { nom:m.nom, ic:m.ic, nextDue:nextDue, remaining:remaining, status:status, imp:m.imp };
+    })
+    .sort(function(a,b){ return a.remaining - b.remaining; });
+}
+function renderDossierSuggestions(){
+  var box = document.getElementById('dossier-suggestions-box');
+  if(!box) return;
+  var v0 = (_dossierVehicles||[])[0];
+  if(!v0){
+    box.innerHTML = '';
+    return;
+  }
+  if(!v0.km){
+    box.innerHTML = '<div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:10px;padding:10px 13px;font-size:12px;color:#92400E">🔧 <b>Ce que le client voit dans son espace :</b> rien pour l\'instant — il n\'a pas encore entré le kilométrage de son véhicule, donc son calendrier d\'entretien est vide de son côté aussi.</div>';
+    return;
+  }
+  var plan = dashComputeMaintenancePlan(v0).filter(function(it){ return it.status !== 'ok'; }).slice(0, 5);
+  if(!plan.length){
+    box.innerHTML = '<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:10px 13px;font-size:12px;color:#15803D">🔧 <b>Ce que le client voit dans son espace :</b> tout est à jour selon le kilométrage entré (' + Number(v0.km).toLocaleString('fr-CA') + ' km) — rien d\'urgent à lui suggérer.</div>';
+    return;
+  }
+  var rows = plan.map(function(it){
+    var color = it.status === 'due' ? '#DC2626' : '#D97706';
+    var bg = it.status === 'due' ? '#FEF2F2' : '#FFFBEB';
+    var lbl = it.status === 'due' ? 'Rendu là' : 'Bientôt';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0">'
+      +'<span>'+it.ic+'</span>'
+      +'<span style="flex:1;font-size:12.5px;color:#374151">'+it.nom+' <span style="color:#9CA3AF">· vers '+Number(it.nextDue).toLocaleString('fr-CA')+' km</span></span>'
+      +'<span style="font-size:10px;font-weight:700;color:'+color+';background:'+bg+';padding:2px 8px;border-radius:8px;white-space:nowrap">'+lbl+'</span>'
+      +'</div>';
+  }).join('');
+  box.innerHTML = '<div style="background:#EEF1FF;border:1px solid #BFDBFE;border-radius:10px;padding:10px 13px">'
+    +'<div style="font-size:12px;font-weight:700;color:#0F2ACC;margin-bottom:4px">🔧 Ce que le client voit dans son espace (basé sur '+Number(v0.km).toLocaleString('fr-CA')+' km entré par lui) :</div>'
+    + rows
+    +'</div>';
 }
 function renderDossierVehiclePhoto(){
   var box = document.getElementById('dossier-veh-photo-box');
