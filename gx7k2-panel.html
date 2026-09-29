@@ -562,6 +562,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
         <button class="filter-btn" id="crmf-name" onclick="crmSort('name',this)">🔤 Nom (A-Z)</button>
         <button class="filter-btn" id="crmf-most" onclick="crmSort('most',this)">🔁 Plus de RDV</button>
         <button class="filter-btn" id="crmf-norsvp" onclick="crmSort('norrdv',this)">⚡ Inscrits sans RDV</button>
+        <button class="filter-btn" id="crmf-maintdue" onclick="crmSort('maintdue',this)">🔧 Entretien à venir</button>
       </div>
       <div id="crm-stats" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1rem"></div>
       <div id="crm-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
@@ -2199,6 +2200,9 @@ async function buildCRM(){
       if(acc.insurer_since) c.insurer_since = acc.insurer_since;
       if(v0.financed) c.financed = v0.financed;
       if(v0.km) c.km = v0.km;
+      if(v0.make) c.vMake = v0.make;
+      if(v0.model) c.vModel = v0.model;
+      if(v0.fuel) c.vFuel = v0.fuel;
       if(!c.vehicle && vehicleStr) c.vehicle = vehicleStr;
     } else {
       // Compte créé directement, sans aucune demande ni RDV — c'est exactement
@@ -2213,6 +2217,7 @@ async function buildCRM(){
         address: acc.address||'', birthdate: acc.birthdate||'',
         insurer: acc.insurer||'', insurer_since: acc.insurer_since||'',
         financed: v0.financed||'', km: v0.km||'',
+        vMake: v0.make||'', vModel: v0.model||'', vFuel: v0.fuel||'',
       };
     }
   });
@@ -2242,6 +2247,13 @@ async function buildCRM(){
   });
 
   _crmClients = Object.keys(map).map(function(k){ return map[k]; });
+  // Entretien à venir par client — même calcul par kilométrage que ce que le
+  // client voit dans son espace, mais ici pour TOUS les clients d'un coup :
+  // ça évite d'avoir à ouvrir chaque dossier un par un pour savoir qui a
+  // besoin de quoi. Trié pour montrer l'item le plus urgent en premier.
+  _crmClients.forEach(function(c){
+    c.maintAlerts = c.km ? dashComputeMaintenancePlan({ km:c.km, make:c.vMake, model:c.vModel, fuel:c.vFuel }).filter(function(it){ return it.status !== 'ok'; }) : [];
+  });
   document.getElementById('tbcrm').textContent = _crmClients.length;
   renderCRMStats();
   renderCRM();
@@ -2274,12 +2286,14 @@ function renderCRMStats(){
   var withRdv = _crmClients.filter(function(c){ return c.rdvCount>0; }).length;
   var repeat = _crmClients.filter(function(c){ return c.rdvCount>1; }).length;
   var noRdvAccounts = _crmClients.filter(function(c){ return c.hasAccount && c.rdvCount===0; }).length;
+  var maintDue = _crmClients.filter(function(c){ return (c.maintAlerts||[]).length>0; }).length;
   var el = document.getElementById('crm-stats');
   function stat(n,l,color){ return '<div style="flex:1;min-width:120px;background:white;border:1px solid var(--border);border-radius:12px;padding:12px 14px"><div style="font-size:22px;font-weight:800;letter-spacing:-.02em;color:'+color+'">'+n+'</div><div style="font-size:11.5px;color:var(--muted);margin-top:2px">'+l+'</div></div>'; }
   el.innerHTML = stat(total,'Clients au total','#0E9F6E')
     + stat(withRdv,'Avec réservation','#3E6AE1')
     + stat(repeat,'Clients fidèles (2+ RDV)','#8B5CF6')
-    + stat(noRdvAccounts,'Inscrits, aucun RDV','#D97706');
+    + stat(noRdvAccounts,'Inscrits, aucun RDV','#D97706')
+    + stat(maintDue,'🔧 Entretien à venir','#DC2626');
 }
 
 function crmSort(mode, btn){
@@ -2311,11 +2325,24 @@ function renderCRM(){
     list = list.filter(function(c){ return c.hasAccount && c.rdvCount===0; });
   }
 
+  // Filtre "entretien à venir" : quelque chose de dû/bientôt selon le kilométrage
+  if(_crmSort === 'maintdue'){
+    list = list.filter(function(c){ return (c.maintAlerts||[]).length>0; });
+  }
+
   // Tri
   if(_crmSort === 'name'){
     list.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
   } else if(_crmSort === 'most'){
     list.sort(function(a,b){ return b.rdvCount - a.rdvCount; });
+  } else if(_crmSort === 'maintdue'){
+    // Le plus urgent en premier (rendu là avant bientôt), puis le plus proche du seuil
+    list.sort(function(a,b){
+      var au = a.maintAlerts[0], bu = b.maintAlerts[0];
+      var aRank = au.status==='due' ? 0 : 1, bRank = bu.status==='due' ? 0 : 1;
+      if(aRank !== bRank) return aRank - bRank;
+      return au.remaining - bu.remaining;
+    });
   } else {
     list.sort(function(a,b){ return b.lastDate - a.lastDate; });
   }
@@ -2343,6 +2370,7 @@ function crmCard(c){
     +(c.manual?" <span style='font-size:10px;font-weight:700;color:#0B7D57;background:#E6F6EF;padding:1px 7px;border-radius:8px;vertical-align:middle'>✎ ajouté</span>":"")
     +(c.hasAccount?" <span class='crm-badge-acct' style='font-size:10px;font-weight:700;color:#0F2ACC;background:#EEF1FF;padding:1px 7px;border-radius:8px;vertical-align:middle'>✅ Compte Greaz</span>":"")
     +(c.hasAccount && c.rdvCount===0?" <span style='font-size:10px;font-weight:700;color:#92400E;background:#FEF3C7;padding:1px 7px;border-radius:8px;vertical-align:middle'>⚡ Inscrit, aucun RDV</span>":"")
+    +((c.maintAlerts&&c.maintAlerts.length)?" <span style='font-size:10px;font-weight:700;color:"+(c.maintAlerts[0].status==='due'?'#DC2626':'#92400E')+";background:"+(c.maintAlerts[0].status==='due'?'#FEF2F2':'#FFFBEB')+";padding:1px 7px;border-radius:8px;vertical-align:middle'>"+c.maintAlerts[0].ic+" "+c.maintAlerts[0].nom+(c.maintAlerts.length>1?' (+'+(c.maintAlerts.length-1)+')':'')+"</span>":"")
     +"</div>"
     +"<div class='card-meta'><span>"+(c.vehicle||'Véhicule non précisé')+"</span>"+(c.km?"<span class='cm-extra'>· 📊 "+Number(c.km).toLocaleString('fr-CA')+" km</span>":"")+((c.city||c.address)?"<span class='cm-extra'>· 📍 "+(c.address||c.city)+"</span>":"")+"</div></div>"
     +"</div>"
