@@ -515,11 +515,12 @@ async function connectAndInit(){
   }
 }
 
-function parseDTCs(raw){
+function parseDTCs(raw, headerByte){
+  headerByte = (headerByte || '43').toUpperCase();
   var clean = raw.replace(/SEARCHING\.\.\./gi,' ').replace(/[\r\n>]/g,' ').trim();
   var bytes = clean.split(/\s+/).filter(function(b){ return /^[0-9A-Fa-f]{2}$/.test(b); });
   var start = -1;
-  for(var i=0;i<bytes.length;i++){ if(bytes[i].toUpperCase()==='43'){ start = i; break; } }
+  for(var i=0;i<bytes.length;i++){ if(bytes[i].toUpperCase()===headerByte){ start = i; break; } }
   if(start === -1) return [];
   var payload = bytes.slice(start+1);
   var LETTERS = ['P','C','B','U'];
@@ -630,6 +631,76 @@ async function runScan(){
     if(!isNaN(byteA)){ milOn = !!(byteA & 0x80); milDtcCount = byteA & 0x7F; }
   }
 
+  // ═══ Odomètre réel (PID 01 A6) — lu directement sur l'auto plutôt que tapé
+  // par le client. PID assez récent (ajouté au standard OBD-II vers 2010+) :
+  // pas tous les véhicules/dongles le supportent, donc on gère l'échec
+  // proprement (extra.odometerKm reste null) sans faire planter le scan. ═══
+  var odometerKm = null;
+  try {
+    var odoRaw = await sendCmd('01A6', 1500);
+    var odoBytes = extractBytesAfter(odoRaw, '41 A6');
+    if(odoBytes && odoBytes.length >= 4){
+      var odoRaw4 = parseInt(odoBytes[0],16)*16777216 + parseInt(odoBytes[1],16)*65536 + parseInt(odoBytes[2],16)*256 + parseInt(odoBytes[3],16);
+      if(!isNaN(odoRaw4)) odometerKm = Math.round(odoRaw4 * 0.2);
+    }
+    techLog(odometerKm ? ('Odomètre lu : ' + odometerKm.toLocaleString('fr-CA') + ' km') : 'Odomètre non supporté par ce véhicule/dongle — kilométrage à confirmer avec le client.');
+  } catch(e){ odometerKm = null; }
+
+  // ═══ Codes permanents (Mode 0A) — contrairement aux codes normaux (Mode 03),
+  // ceux-là ne s'effacent PAS en débranchant la batterie ou avec un effaceur
+  // de codes classique — seul l'ECU lui-même les retire, une fois qu'il a
+  // confirmé sur plusieurs cycles de conduite que le problème est vraiment
+  // réglé. Argument fort : si les codes ont été "nettoyés" juste avant ta
+  // visite (client ou vendeur d'auto usagée), ceux-là le trahissent — le vrai
+  // problème est encore là même si le voyant est éteint. ═══
+  var permCodes = [];
+  try {
+    var permRaw = await sendCmd('0A', 2000);
+    var rawPermCodes = parseDTCs(permRaw, '4A');
+    permCodes = rawPermCodes.map(dtcLookup);
+    techLog(permCodes.length ? ('⚠ ' + permCodes.length + ' code(s) permanent(s) : ' + permCodes.map(function(c){ return c.code; }).join(', ')) : 'Aucun code permanent.');
+  } catch(e){ permCodes = []; }
+
+  // ═══ Distance parcourue avec le voyant allumé (PID 01 21) — dit exactement
+  // depuis combien de km le client roule avec un problème actif, au lieu d'un
+  // vague "y'a un code". Argument d'urgence concret et chiffré. ═══
+  var distSinceMil = null;
+  try {
+    var milDistRaw = await sendCmd('0121', 1200);
+    var milDistBytes = extractBytesAfter(milDistRaw, '41 21');
+    distSinceMil = (milDistBytes && milDistBytes.length >= 2) ? (parseInt(milDistBytes[0],16)*256 + parseInt(milDistBytes[1],16)) : null;
+  } catch(e){ distSinceMil = null; }
+
+  // ═══ Snapshot au moment du bris (freeze frame, Mode 02) — les conditions
+  // exactes (régime, température, charge, vitesse) au moment où le premier
+  // code s'est déclenché. Donne un côté "vrai rapport de diagnostic"
+  // professionnel plutôt qu'un simple relevé du moment présent. Seulement si
+  // y'a au moins un code confirmé — sinon y'a rien à geler. ═══
+  var freezeFrame = null;
+  if(rawCodes.length){
+    try {
+      var ffRpmRaw = await sendCmd('020C00', 1200);
+      var ffRpmBytes = extractBytesAfter(ffRpmRaw, '42 0C 00');
+      var ffRpm = ffRpmBytes ? Math.round(((parseInt(ffRpmBytes[0],16)*256)+parseInt(ffRpmBytes[1],16))/4) : null;
+
+      var ffCoolRaw = await sendCmd('020500', 1200);
+      var ffCoolBytes = extractBytesAfter(ffCoolRaw, '42 05 00');
+      var ffCool = ffCoolBytes ? (parseInt(ffCoolBytes[0],16) - 40) : null;
+
+      var ffLoadRaw = await sendCmd('020400', 1200);
+      var ffLoadBytes = extractBytesAfter(ffLoadRaw, '42 04 00');
+      var ffLoad = ffLoadBytes ? Math.round(parseInt(ffLoadBytes[0],16)*100/255) : null;
+
+      var ffSpeedRaw = await sendCmd('020D00', 1200);
+      var ffSpeedBytes = extractBytesAfter(ffSpeedRaw, '42 0D 00');
+      var ffSpeed = ffSpeedBytes ? parseInt(ffSpeedBytes[0],16) : null;
+
+      if(ffRpm!=null || ffCool!=null || ffLoad!=null || ffSpeed!=null){
+        freezeFrame = { rpm: ffRpm, coolant: ffCool, load: ffLoad, speed: ffSpeed };
+      }
+    } catch(e){ freezeFrame = null; }
+  }
+
   // ═══ NIV (VIN, Mode 09) — c'est ça qui permet la "fiche technique" façon
   // msinfo32 : specs officielles + rappels, même quand y'a zéro code. Tous
   // les dongles/véhicules ne le supportent pas parfaitement — on gère l'échec
@@ -643,7 +714,8 @@ async function runScan(){
 
   lastResult = {
     codes: codes, rpm: rpm, coolant: coolant, volt: volt, extra: extra, raw: dtcRaw,
-    mil: { on: milOn, count: milDtcCount },
+    mil: { on: milOn, count: milDtcCount }, odometerKm: odometerKm,
+    permCodes: permCodes, distSinceMil: distSinceMil, freezeFrame: freezeFrame,
     vin: vin, specs: null, recalls: null,
     specsStatus: vin ? 'loading' : 'no-vin'
   };
@@ -736,7 +808,7 @@ function setFuel(type){
 // dans greaz-dashboard.html.
 function normPhone(p){ return (p||'').replace(/[^0-9]/g,''); }
 function normEmail(e){ return (e||'').trim().toLowerCase(); }
-var _matchedClientUid = null, _matchedClientName = null, _matchedCrmId = null, _matchedCrmNote = null, _matchedLeadId = null, _matchedLeadNotes = null;
+var _matchedClientUid = null, _matchedClientName = null, _matchedCrmId = null, _matchedCrmNote = null, _matchedLeadId = null, _matchedLeadNotes = null, _matchedVehicles = null;
 
 function searchExistingClient(){
   var statusEl = document.getElementById('client-match-status');
@@ -747,7 +819,7 @@ function searchExistingClient(){
     statusEl.innerHTML = '<span style="color:var(--rose)">Mets au moins un courriel ou un téléphone pour chercher.</span>';
     return;
   }
-  _matchedClientUid = null; _matchedClientName = null; _matchedCrmId = null; _matchedCrmNote = null; _matchedLeadId = null; _matchedLeadNotes = null;
+  _matchedClientUid = null; _matchedClientName = null; _matchedCrmId = null; _matchedCrmNote = null; _matchedLeadId = null; _matchedLeadNotes = null; _matchedVehicles = null;
   statusEl.innerHTML = '<span style="color:var(--muted)">🔍 Recherche...</span>';
 
   Promise.all([
@@ -777,6 +849,7 @@ function searchExistingClient(){
     if(matchedClient){
       _matchedClientUid = matchedClient._uid;
       _matchedClientName = [matchedClient.prenom, matchedClient.nom].filter(Boolean).join(' ') || 'Client';
+      _matchedVehicles = matchedClient.vehicles || [];
       var v0 = (matchedClient.vehicles||[])[0] || {};
       if(v0.make && !document.getElementById('sc-make').value) document.getElementById('sc-make').value = v0.make;
       if(v0.model && !document.getElementById('sc-model').value) document.getElementById('sc-model').value = v0.model;
@@ -849,6 +922,12 @@ function renderResults(){
   }
   renderExtra();
   renderTechCard();
+
+  // Le vrai kilométrage lu sur l'auto (odomètre, PID 01 A6) remplace ce qui
+  // était tapé — c'est plus fiable que ce que le client a entré lui-même.
+  if(lastResult.odometerKm){
+    document.getElementById('sc-km').value = lastResult.odometerKm;
+  }
 }
 function toggleWhy(i){
   document.getElementById('why-'+i).classList.toggle('show');
@@ -869,6 +948,44 @@ function renderTechCard(){
     parts.push('<div class="mini-tile" style="grid-column:1/-1;text-align:left;display:flex;align-items:center;gap:8px">'
       + '<span style="font-size:1.1rem">'+(r.mil.on?'🔴':'🟢')+'</span>'
       + '<span style="font-size:12.5px;font-weight:700;color:var(--ink)">Voyant moteur '+(r.mil.on?'allumé':'éteint')+(r.mil.count?' · '+r.mil.count+' code(s) confirmé(s)':'')+'</span>'
+      + '</div>');
+  }
+
+  if(r.mil && r.mil.on && r.distSinceMil != null){
+    parts.push('<div class="mini-tile" style="grid-column:1/-1;text-align:left;display:flex;align-items:center;gap:8px;background:var(--roselt)">'
+      + '<span style="font-size:1.1rem">⏱️</span>'
+      + '<span style="font-size:12.5px;font-weight:700;color:#B3261E">Le client roule depuis '+r.distSinceMil.toLocaleString('fr-CA')+' km avec le voyant allumé</span>'
+      + '</div>');
+  }
+
+  if(r.permCodes && r.permCodes.length){
+    parts.push('<div style="grid-column:1/-1;margin-top:2px">'
+      + '<div style="font-size:12.5px;font-weight:700;color:#B3261E;margin-bottom:4px">🔒 '+r.permCodes.length+' code(s) permanent(s) — problème pas réellement réglé, même si effacé</div>'
+      + r.permCodes.map(function(c){
+          return '<div style="background:var(--roselt);border-radius:10px;padding:6px 10px;margin-bottom:4px;font-size:12px;color:#7A2E28">'
+            + '<b>'+c.code+'</b> — '+escapeHtml(c.fr) + '</div>';
+        }).join('')
+      + '</div>');
+  }
+
+  if(r.freezeFrame){
+    var ff = r.freezeFrame;
+    var ffBits = [];
+    if(ff.rpm!=null) ffBits.push(ff.rpm+' RPM');
+    if(ff.coolant!=null) ffBits.push(ff.coolant+'°C moteur');
+    if(ff.load!=null) ffBits.push(ff.load+'% charge');
+    if(ff.speed!=null) ffBits.push(ff.speed+' km/h');
+    if(ffBits.length){
+      parts.push('<div style="grid-column:1/-1;font-size:12px;color:var(--muted);background:var(--ivory);border-radius:10px;padding:8px 12px">'
+        + '📸 <b>Conditions au moment du bris</b> (freeze frame) : ' + ffBits.join(' · ')
+        + '</div>');
+    }
+  }
+
+  if(r.odometerKm){
+    parts.push('<div class="mini-tile" style="grid-column:1/-1;text-align:left;display:flex;align-items:center;gap:8px;background:var(--ivory)">'
+      + '<span style="font-size:1.1rem">📏</span>'
+      + '<span style="font-size:12.5px;font-weight:700;color:var(--ink)">Odomètre réel (lu sur l\'auto) : '+r.odometerKm.toLocaleString('fr-CA')+' km</span>'
       + '</div>');
   }
 
@@ -989,6 +1106,21 @@ function saveScanLead(){
   if(lastResult.mil && lastResult.mil.on !== null){
     descLines.push('Voyant moteur : ' + (lastResult.mil.on ? 'ALLUMÉ' : 'éteint') + (lastResult.mil.count ? ' (' + lastResult.mil.count + ' code(s) confirmé(s))' : ''));
   }
+  if(lastResult.mil && lastResult.mil.on && lastResult.distSinceMil != null){
+    descLines.push('⏱️ Roule depuis ' + lastResult.distSinceMil.toLocaleString('fr-CA') + ' km avec le voyant allumé');
+  }
+  if(lastResult.permCodes && lastResult.permCodes.length){
+    descLines.push('🔒 ' + lastResult.permCodes.length + ' code(s) permanent(s) (pas réglé même si effacé) : ' + lastResult.permCodes.map(function(c){ return c.code + ' — ' + c.fr; }).join(', '));
+  }
+  if(lastResult.freezeFrame){
+    var ff = lastResult.freezeFrame;
+    var ffBits = [];
+    if(ff.rpm!=null) ffBits.push(ff.rpm+' RPM');
+    if(ff.coolant!=null) ffBits.push(ff.coolant+'°C moteur');
+    if(ff.load!=null) ffBits.push(ff.load+'% charge');
+    if(ff.speed!=null) ffBits.push(ff.speed+' km/h');
+    if(ffBits.length) descLines.push('📸 Conditions au moment du bris : ' + ffBits.join(' · '));
+  }
   if(lastResult.vin) descLines.push('NIV : ' + lastResult.vin);
   if(lastResult.specs){
     var sp = lastResult.specs;
@@ -1018,6 +1150,17 @@ function saveScanLead(){
   //    ajoutes un entretien à la main dans le dashboard — il le voit dans
   //    son espace client.
   if(_matchedClientUid){
+    // Kilométrage réel lu sur l'auto (odomètre) → met à jour le compte du
+    // client directement, pour que son calendrier d'entretien (et le filtre
+    // "🔧 Entretien à venir" côté admin) reste exact sans dépendre de ce que
+    // le client a tapé lui-même. On ne touche PAS le vehicle_km s'il n'a pas
+    // pu être lu (dongle/véhicule ne supportant pas cette donnée) — on garde
+    // alors le chiffre entré manuellement plutôt que d'effacer une vraie valeur.
+    if(lastResult.odometerKm && _matchedVehicles && _matchedVehicles.length){
+      var updatedVehicles = _matchedVehicles.slice();
+      updatedVehicles[0] = Object.assign({}, updatedVehicles[0], { km: lastResult.odometerKm });
+      writes.push(_db.collection('clients').doc(_matchedClientUid).update({ vehicles: updatedVehicles }));
+    }
     writes.push(_db.collection('service_history').add({
       client_uid: _matchedClientUid,
       vehicle_label: vehName,
