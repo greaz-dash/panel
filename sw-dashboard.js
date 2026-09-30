@@ -18,6 +18,39 @@ self.addEventListener('activate', function(event){
   self.clients.claim();
 });
 
+// ═══ Notifications push — reçues même quand le panneau est complètement
+// fermé. Le serveur (fonction Supabase "send-push") envoie un message
+// chiffré ; c'est ce code qui l'affiche comme une vraie notification. ═══
+self.addEventListener('push', function(event){
+  var data = {};
+  try { data = event.data ? event.data.json() : {}; } catch(e){}
+  var title = data.title || '🔧 Greaz Gestion';
+  var body = data.body || 'Nouvelle activité sur Greaz.';
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: body,
+      icon: 'icon-192.png',
+      badge: 'icon-192.png',
+      tag: 'greaz-push-' + Date.now(),
+      data: { tab: data.tab || '' }
+    })
+  );
+});
+
+self.addEventListener('notificationclick', function(event){
+  event.notification.close();
+  var targetUrl = './gx7k2-panel.html';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList){
+      for (var i = 0; i < clientList.length; i++){
+        var c = clientList[i];
+        if (c.url.indexOf('gx7k2-panel.html') !== -1 && 'focus' in c) return c.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+    })
+  );
+});
+
 self.addEventListener('fetch', function(event){
   var req = event.request;
   if(req.method !== 'GET') return;
