@@ -946,6 +946,39 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
+/* ══════════ UPLOADS DE FICHIERS — via la fonction Supabase ══════════
+   Firebase Storage demande maintenant le forfait payant Blaze pour être
+   activé, donc tous les envois de fichiers (photos de véhicule, factures,
+   logos) passent par une petite fonction serveur gratuite (Supabase Edge
+   Function) qui vérifie vraiment le jeton Firebase admin avant d'accepter
+   quoi que ce soit — même niveau de sécurité qu'avant, sans carte de
+   crédit. À REMPLACER : mets ici l'URL de TA fonction une fois déployée
+   (Supabase → Edge Functions → upload-file → Details → "Invoke URL"). */
+var SUPABASE_FUNCTION_URL = 'https://cvgdrhxkevneswowtxrt.supabase.co/functions/v1/upload-file';
+var SUPABASE_ANON_KEY = 'sb_publishable_q0SPPhiweAWf3WNULK-7qQ_n2O_9IgG';
+
+function uploadViaFunction(file, purpose, targetUid, extra){
+  if(!file) return Promise.resolve(null);
+  if(!currentAdmin) return Promise.reject(new Error('Session admin expirée — reconnecte-toi.'));
+  return currentAdmin.getIdToken().then(function(idToken){
+    var fd = new FormData();
+    fd.append('file', file, file.name || 'fichier.jpg');
+    fd.append('purpose', purpose);
+    fd.append('target_uid', targetUid || '');
+    if(extra) Object.keys(extra).forEach(function(k){ fd.append(k, extra[k]); });
+    return fetch(SUPABASE_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'X-Firebase-Token': idToken },
+      body: fd
+    });
+  }).then(function(r){
+    return r.json().then(function(data){
+      if(!r.ok) throw new Error(data.error || 'Erreur d\'envoi.');
+      return data; // { url, name }
+    });
+  });
+}
+
 var _leads=[], _mecs=[], _rdvs=[], _pendingMecs=[], _directory=[], _claims=[], _affiliates=[];
 var _leadsFilter="all", _mecsFilter="todo", _rdvFilter="all";
 var _leadsSearch="", _mecsSearch="", _rdvSearch="";
@@ -2760,12 +2793,9 @@ function onDossierVehPhotoSelected(input){
   _dossierPhotoBusy = true;
   renderDossierVehiclePhoto();
   resizeImageFile(file, 1280, 0.85).then(function(blob){
-    var path = 'vehicle_photos/' + _dossierUid + '/' + Date.now() + '.jpg';
-    return firebase.storage().ref(path).put(blob, { contentType: 'image/jpeg' });
-  }).then(function(snap){
-    return snap.ref.getDownloadURL();
-  }).then(function(url){
-    _dossierVehicles[0] = Object.assign({}, _dossierVehicles[0], { photo_url: url });
+    return uploadViaFunction(blob, 'vehicle_photo', _dossierUid);
+  }).then(function(facture){
+    _dossierVehicles[0] = Object.assign({}, _dossierVehicles[0], { photo_url: facture.url });
     return db.collection('clients').doc(_dossierUid).update({ vehicles: _dossierVehicles });
   }).then(function(){
     _dossierPhotoBusy = false;
@@ -2893,24 +2923,13 @@ function renderDossierList(records){
   listEl.innerHTML = html;
 }
 
-/* ══════════ FACTURES — upload générique vers Firebase Storage ══════════
+/* ══════════ FACTURES — upload via la fonction Supabase ══════════
    Réutilisé par le dossier client (service_history) et les demandes de
    soumission (leads). Accepte photo ou PDF, retourne {url, name} une fois
    téléversé. */
-function uploadFactureFile(file, pathPrefix){
-  if(!file) return Promise.resolve(null);
-  var maxMB = 15;
-  if(file.size > maxMB * 1024 * 1024){
-    return Promise.reject(new Error('Le fichier est trop volumineux (max '+maxMB+' Mo).'));
-  }
-  var safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-  var path = pathPrefix + '/' + Date.now() + '_' + safeName;
-  var ref = firebase.storage().ref(path);
-  return ref.put(file).then(function(snap){
-    return snap.ref.getDownloadURL();
-  }).then(function(url){
-    return { url: url, name: file.name };
-  });
+function uploadFactureFile(file, purpose, targetUidOrLeadId){
+  if(purpose === 'lead') return uploadViaFunction(file, 'lead_facture', null, { lead_id: targetUidOrLeadId });
+  return uploadViaFunction(file, 'admin_facture', targetUidOrLeadId);
 }
 
 function saveDossierRecord(){
@@ -2936,7 +2955,7 @@ function saveDossierRecord(){
   errEl.style.display = 'none';
   btn.disabled = true; btn.textContent = factureFile ? '⏳ Envoi de la facture...' : '⏳ Enregistrement...';
   var costNum = cost ? Number(cost) : 0;
-  uploadFactureFile(factureFile, 'factures/service_history/' + _dossierUid).then(function(facture){
+  uploadFactureFile(factureFile, 'client', _dossierUid).then(function(facture){
     btn.textContent = '⏳ Enregistrement...';
     return db.collection('service_history').add({
       client_uid: _dossierUid,
@@ -2989,7 +3008,7 @@ function attachFactureToRecord(recordId, inputEl){
   if(!file) return;
   var card = document.getElementById('facture-status-' + recordId);
   if(card) card.textContent = '⏳ Envoi...';
-  uploadFactureFile(file, 'factures/service_history/' + _dossierUid).then(function(facture){
+  uploadFactureFile(file, 'client', _dossierUid).then(function(facture){
     return db.collection('service_history').doc(recordId).update({
       facture_url: facture.url,
       facture_name: facture.name
@@ -3300,7 +3319,7 @@ function attachFactureToLead(leadId, inputEl){
   var lbl = inputEl.parentElement;
   var prevTxt = lbl.firstChild.textContent;
   lbl.firstChild.textContent = '⏳ Envoi...';
-  uploadFactureFile(file, 'factures/leads/' + leadId).then(function(facture){
+  uploadFactureFile(file, 'lead', leadId).then(function(facture){
     return db.collection('leads').doc(leadId).update({
       facture_url: facture.url,
       facture_name: facture.name
@@ -4141,9 +4160,8 @@ async function uploadEditLogo(){
         canvas.height = img.height*ratio;
         canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
         canvas.toBlob(function(blob){
-          var ref = firebase.storage().ref('logos/annuaire/'+Date.now()+'.jpg');
-          ref.put(blob).then(function(snap){
-            snap.ref.getDownloadURL().then(resolve).catch(reject);
+          uploadViaFunction(blob, 'annuaire_logo', null).then(function(facture){
+            resolve(facture.url);
           }).catch(reject);
         }, 'image/jpeg', 0.75);
       };
