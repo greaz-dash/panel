@@ -987,10 +987,26 @@ function subscribeToPush(){
       return fetch(SUPABASE_SAVE_SUBSCRIPTION_URL, {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'X-Firebase-Token': idToken, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'subscribe', subscription: sub.toJSON ? sub.toJSON() : sub })
+        body: JSON.stringify({ action: 'subscribe', role: 'admin', subscription: sub.toJSON ? sub.toJSON() : sub })
       });
     });
   }).catch(function(e){ console.log('Abonnement push:', e && e.message); });
+}
+
+// ═══ Alerte push envoyée à UN client précis (RDV confirmé, facture
+// ajoutée, message du garage) — voir la fonction Supabase "send-push". ═══
+var SUPABASE_SEND_PUSH_URL = 'https://cvgdrhxkevneswowtxrt.supabase.co/functions/v1/send-push';
+function notifyClientPush(clientUid, purpose, name, extra){
+  if(!clientUid || !currentAdmin) return;
+  try {
+    currentAdmin.getIdToken().then(function(idToken){
+      fetch(SUPABASE_SEND_PUSH_URL, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'X-Firebase-Token': idToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ purpose: purpose, client_uid: clientUid, name: (name||'').slice(0,80), extra: (extra||'').slice(0,140) })
+      }).catch(function(){});
+    }).catch(function(){});
+  } catch(e){}
 }
 
 function uploadViaFunction(file, purpose, targetUid, extra){
@@ -3074,6 +3090,7 @@ function saveDossierRecord(){
       created_at: firebase.firestore.FieldValue.serverTimestamp()
     });
   }).then(function(){
+    notifyClientPush(_dossierUid, 'facture_added', '', title);
     // Le prix entré ici nourrit aussi la base de "vrais prix" du vérificateur
     // de prix du site (même collection, mêmes clés que BAREME_PRIX).
     if(serviceType && costNum > 0){
@@ -3231,6 +3248,7 @@ async function sendAdminChatMessage(){
       last_message: '🔧 '+text, last_at: firebase.firestore.FieldValue.serverTimestamp(),
       unread_by_client: true, unread_by_admin: false,
     }, { merge:true });
+    notifyClientPush(_chatThreadUid, 'garage_message', '', text);
   } catch(e){ alert('Erreur d\'envoi : '+(e.message||e)); }
 }
 
@@ -3828,6 +3846,9 @@ function setRdvStatus(id, status){
     .then(function(){
       var item = _rdvs.find(function(a){ return a.id===id; });
       if(item) item.status = status;
+      if(item && status === 'confirme' && item.client_uid){
+        notifyClientPush(item.client_uid, 'appointment_confirmed', '', (item.mechanic_name||'')+(item.date?' · '+item.date:''));
+      }
       updateStats(); renderRdv();
       setTimeout(function(){ var b=document.getElementById("body-"+id); if(b) b.classList.add("open"); }, 50);
     });
