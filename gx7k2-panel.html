@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Greaz — Gestion</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234568D6'/%3E%3Ctext x='50' y='50' font-family='Arial,sans-serif' font-size='62' font-weight='800' fill='white' text-anchor='middle' dominant-baseline='central' letter-spacing='-3'%3EG%3C/text%3E%3C/svg%3E">
+<link id="favicon-link" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234568D6'/%3E%3Ctext x='50' y='50' font-family='Arial,sans-serif' font-size='62' font-weight='800' fill='white' text-anchor='middle' dominant-baseline='central' letter-spacing='-3'%3EG%3C/text%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234568D6'/%3E%3Ctext x='50' y='50' font-family='Arial,sans-serif' font-size='62' font-weight='800' fill='white' text-anchor='middle' dominant-baseline='central' letter-spacing='-3'%3EG%3C/text%3E%3C/svg%3E">
 <meta name="theme-color" content="#4568D6">
 <!-- ═══ APP INSTALLABLE (PWA) ═══ -->
@@ -448,6 +448,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
     <div class="header-logo">Gre<span>az</span> <span style="font-size:12px;font-weight:400;color:rgba(255,255,255,.35);margin-left:6px">Gestion</span> <span style="font-size:10px;font-weight:700;color:#00C26F;background:rgba(0,194,111,.15);padding:2px 8px;border-radius:6px;margin-left:6px">v4.2 🔧</span></div>
     <div class="header-right">
       <span class="htime" id="htime"></span>
+      <button id="notif-permission-btn" onclick="requestNotifPermission()" title="Active les alertes même quand cet onglet n'est pas ouvert devant toi" style="display:none;position:relative;background:#dc2626;border:1px solid rgba(255,255,255,.15);border-radius:10px;height:38px;padding:0 12px;cursor:pointer;font-size:12px;font-weight:700;color:white;white-space:nowrap">🔔 Activer les alertes</button>
       <button id="notif-bell" onclick="toggleNotifSound()" title="Activer/désactiver le son" style="position:relative;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;width:38px;height:38px;cursor:pointer;font-size:16px;color:white">🔔<span id="notif-badge" style="display:none;position:absolute;top:-6px;right:-6px;background:#dc2626;color:white;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:none;align-items:center;justify-content:center;padding:0 4px">0</span></button>
       <span id="admin-email" style="font-size:11px;color:rgba(255,255,255,.4);margin-right:4px"></span>
       <button class="header-btn btn-export" onclick="exportCSV()">⬇ CSV</button>
@@ -1168,6 +1169,7 @@ function init(){
   loadLeads(); loadMecApps(); loadAppointments(); loadClaims(); loadWorkflow(); loadTeam(); loadAnnuaireData(); loadJobsAdmin(); loadRentalLeads();
   if(canManageDirectory()){ loadAffiliates(); loadPartnersAdmin(); }
   setTimeout(startRealtimeNotifications, 3000); // démarre après le chargement initial
+  initNotifPermissionUI();
 }
 
 /* ══════════ NOTIFICATIONS TEMPS RÉEL ══════════ */
@@ -1178,6 +1180,64 @@ var _seenLeadIds = {};
 var _seenRdvIds = {};
 var _seenClaimIds = {};
 var _seenChatAt = {};
+var _baseTitle = document.title;
+
+// ═══ Alertes même quand l'onglet n'est pas affiché à l'écran ═══
+// Important à comprendre : ceci fonctionne seulement si ce tableau de bord
+// reste ouvert (même en arrière-plan / minimisé) dans un navigateur qui
+// tourne. Si le navigateur est complètement fermé, ou l'ordi/téléphone
+// éteint ou en veille profonde, aucune alerte ne peut arriver — pour ça,
+// il faudrait des vraies notifications "push" envoyées par un serveur,
+// ce qui est une étape technique plus grosse (dis-le-moi si tu veux qu'on
+// la fasse). En attendant, laisse ce panneau ouvert sur un appareil pour
+// être avisé en temps réel.
+function initNotifPermissionUI(){
+  var btn = document.getElementById('notif-permission-btn');
+  if(!btn) return;
+  if(!('Notification' in window)){ btn.style.display = 'none'; return; }
+  if(Notification.permission === 'default'){
+    btn.style.display = 'inline-block';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+function requestNotifPermission(){
+  if(!('Notification' in window)) return;
+  Notification.requestPermission().then(function(perm){
+    var btn = document.getElementById('notif-permission-btn');
+    if(btn) btn.style.display = 'none';
+    if(perm === 'granted'){
+      showNotif('🔔 Alertes activées', 'Tu vas recevoir une notification même si cet onglet n\'est pas au premier plan.', null, true);
+      try { new Notification('🔧 Greaz Gestion', { body: 'Les alertes sont maintenant activées.' }); } catch(e){}
+    }
+  });
+}
+function fireNativeNotification(title, body){
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  // On évite de spammer une alerte OS en plus du toast quand la personne
+  // regarde déjà l'onglet — seulement quand il est en arrière-plan/minimisé.
+  if(document.visibilityState === 'visible') return;
+  try {
+    var n = new Notification(title, { body: body||'', icon: 'icon-192.png', badge: 'icon-192.png', tag: 'greaz-'+Date.now() });
+    n.onclick = function(){ window.focus(); n.close(); };
+  } catch(e){}
+}
+function updateAppBadgeAndTitle(){
+  if('setAppBadge' in navigator){
+    if(_notifCount > 0) navigator.setAppBadge(_notifCount).catch(function(){});
+    else if('clearAppBadge' in navigator) navigator.clearAppBadge().catch(function(){});
+  }
+  document.title = (_notifCount > 0 ? '('+(_notifCount>99?'99+':_notifCount)+') ' : '') + _baseTitle;
+  updateFaviconBadge(_notifCount > 0);
+}
+var _faviconBase = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%234568D6'/><text x='50' y='50' font-family='Arial,sans-serif' font-size='62' font-weight='800' fill='white' text-anchor='middle' dominant-baseline='central' letter-spacing='-3'>G</text>{DOT}</svg>";
+var _faviconDot = "<circle cx='82' cy='20' r='16' fill='%23dc2626' stroke='white' stroke-width='5'/>";
+function updateFaviconBadge(showDot){
+  var link = document.getElementById('favicon-link');
+  if(!link) return;
+  var svg = _faviconBase.replace('{DOT}', showDot ? _faviconDot : '');
+  link.href = 'data:image/svg+xml,' + svg;
+}
 
 function toggleNotifSound(){
   _notifSoundOn = !_notifSoundOn;
@@ -1215,6 +1275,7 @@ function updateNotifBadge(){
   } else {
     badge.style.display = 'none';
   }
+  updateAppBadgeAndTitle();
 }
 
 function showNotif(title, subtitle, tabTarget, silent){
@@ -1236,14 +1297,15 @@ function showNotif(title, subtitle, tabTarget, silent){
   };
   
   container.appendChild(toast);
-  
+
   // Auto-remove après 8s
   setTimeout(function(){
     toast.style.animation = 'slideOut .3s ease';
     setTimeout(function(){ toast.remove(); }, 300);
   }, 8000);
-  
+
   if(!silent) playNotifSound();
+  if(!silent) fireNativeNotification(title.replace(/^[^\wÀ-ÿ]*\s*/,''), subtitle);
 }
 
 function startRealtimeNotifications(){
