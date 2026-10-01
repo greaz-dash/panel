@@ -1004,7 +1004,9 @@ function notifyClientPush(clientUid, purpose, name, extra){
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'X-Firebase-Token': idToken, 'Content-Type': 'application/json' },
         body: JSON.stringify({ purpose: purpose, client_uid: clientUid, name: (name||'').slice(0,80), extra: (extra||'').slice(0,140) })
-      }).catch(function(){});
+      }).then(function(r){ return r.json(); }).then(function(data){
+        console.log('[notifyClientPush]', purpose, '-> matched:', data.matched, 'sent:', data.sent, 'errors:', data.errors);
+      }).catch(function(e){ console.log('[notifyClientPush] erreur réseau:', e && e.message); });
     }).catch(function(){});
   } catch(e){}
 }
