@@ -1,4 +1,4 @@
-var CACHE_NAME = 'greaz-dashboard-shell-v1';
+var CACHE_NAME = 'greaz-dashboard-shell-v2';
 var CORE_ASSETS = ['./gx7k2-panel.html', './manifest-dashboard.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function(event){
@@ -56,8 +56,11 @@ self.addEventListener('fetch', function(event){
   if(req.method !== 'GET') return;
   if(!req.url.startsWith(self.location.origin)) return; // ne jamais cacher Firebase/EmailJS
   if(req.mode === 'navigate'){
+    // { cache: 'no-store' } : sans ça, "fetch premier" peut quand même
+    // recevoir une copie périmée du cache HTTP du navigateur au lieu
+    // d'aller vraiment chercher la dernière version déployée.
     event.respondWith(
-      fetch(req).then(function(res){
+      fetch(req, { cache: 'no-store' }).then(function(res){
         var clone = res.clone();
         caches.open(CACHE_NAME).then(function(cache){ cache.put(req, clone); });
         return res;
@@ -69,7 +72,7 @@ self.addEventListener('fetch', function(event){
   }
   event.respondWith(
     caches.match(req).then(function(cached){
-      var network = fetch(req).then(function(res){
+      var network = fetch(req, { cache: 'no-store' }).then(function(res){
         if(res && res.status === 200){
           var clone = res.clone();
           caches.open(CACHE_NAME).then(function(cache){ cache.put(req, clone); });
