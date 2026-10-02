@@ -607,6 +607,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
       <div class="toolbar">
         <input class="search-input" type="text" id="vv-search" placeholder="🔍 Chercher une marque, un modèle, une année..." oninput="renderVehicleValues()">
         <button class="tool-btn green" onclick="openAddVehicleValueForm()">➕ Ajouter un modèle</button>
+        <button class="tool-btn" onclick="openVehicleValueMatchCheck()">🔄 Vérifier les correspondances clients</button>
       </div>
       <div id="vv-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
     </div>
@@ -1870,12 +1871,45 @@ function vvTipHide(sid){
   if(tip) tip.style.display = 'none';
 }
 
+// ═══ Cache des véhicules RÉELS de tes clients (marque/modèle/année tels
+// qu'ils sont écrits dans leur dossier) — sert à proposer un pick-list
+// dans "Ajouter un modèle" ci-dessous, pour que l'orthographe soit TOUJOURS
+// identique à ce que le client a dans son profil. Sinon une petite faute
+// de frappe ("elentra" au lieu de "Elantra") fait que la courbe de valeur
+// ne s'affiche jamais chez ce client, même si t'as rentré les prix. ═══
+var _clientVehicleCombos = null; // null = pas encore chargé
+function getClientVehicleCombos(){
+  if(_clientVehicleCombos) return Promise.resolve(_clientVehicleCombos);
+  return db.collection('clients').get().then(function(snap){
+    var seen = {}; var list = [];
+    snap.docs.forEach(function(doc){
+      (doc.data().vehicles || []).forEach(function(v){
+        if(!v || !v.make || !v.model || !v.year) return;
+        var k = vvKey(v.make, v.model, v.year);
+        if(seen[k]) return;
+        seen[k] = true;
+        list.push({ make: v.make, model: v.model, year: v.year, label: v.make+' '+v.model+' '+v.year });
+      });
+    });
+    list.sort(function(a,b){ return a.label.localeCompare(b.label); });
+    _clientVehicleCombos = list;
+    return list;
+  }).catch(function(){ return []; });
+}
+
 function openAddVehicleValueForm(){
   var modal = document.createElement('div');
   modal.id = 'vv-add-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(23,26,32,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem';
   modal.innerHTML = '<div style="background:white;border-radius:18px;padding:1.75rem;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25)">'
     +'<h3 style="font-size:17px;font-weight:800;margin-bottom:1rem">➕ Ajouter un modèle</h3>'
+    +'<div style="margin-bottom:14px">'
+    +'<label style="font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">🔍 Choisir parmi les véhicules de tes clients (recommandé)</label>'
+    +'<input id="vv-pick-existing" type="text" list="vv-vehicle-suggest" placeholder="Tape pour chercher..." autocomplete="off" oninput="vvPickExistingVehicle()" style="width:100%;padding:10px 12px;border:1.5px solid #93C5FD;border-radius:8px;font-size:14px;background:#EFF6FF">'
+    +'<datalist id="vv-vehicle-suggest"></datalist>'
+    +'<div style="font-size:11px;color:#6B7280;margin-top:4px">Choisir ici garantit la même orthographe exacte que dans le dossier du client — sinon la courbe risque de jamais s\'afficher chez lui.</div>'
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:8px;margin:14px 0;color:#9CA3AF;font-size:11px"><div style="flex:1;height:1px;background:#E5E7EB"></div>OU ENTRER MANUELLEMENT<div style="flex:1;height:1px;background:#E5E7EB"></div></div>'
     +'<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Marque *</label><input id="vv-new-make" type="text" placeholder="Ford" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px"></div>'
     +'<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Modèle *</label><input id="vv-new-model" type="text" placeholder="Mustang Mach-E" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px"></div>'
     +'<div style="margin-bottom:1.25rem"><label style="font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Année *</label><input id="vv-new-year" type="number" placeholder="2021" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px"></div>'
@@ -1886,7 +1920,122 @@ function openAddVehicleValueForm(){
     +'</div></div>';
   document.body.appendChild(modal);
   modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
-  setTimeout(function(){ var f=document.getElementById('vv-new-make'); if(f) f.focus(); }, 50);
+  setTimeout(function(){ var f=document.getElementById('vv-pick-existing'); if(f) f.focus(); }, 50);
+
+  getClientVehicleCombos().then(function(list){
+    var dl = document.getElementById('vv-vehicle-suggest');
+    if(!dl) return; // modale fermée avant que la requête réponde
+    dl.innerHTML = list.map(function(c){ return '<option value="'+c.label.replace(/"/g,'&quot;')+'">'; }).join('');
+  });
+}
+
+// Quand l'admin pick une suggestion (ou tape exactement un libellé existant),
+// on remplit les 3 champs avec l'orthographe EXACTE du dossier client.
+function vvPickExistingVehicle(){
+  var typed = (document.getElementById('vv-pick-existing').value || '').trim();
+  if(!typed || !_clientVehicleCombos) return;
+  var match = _clientVehicleCombos.find(function(c){ return c.label === typed; });
+  if(!match) return;
+  document.getElementById('vv-new-make').value = match.make;
+  document.getElementById('vv-new-model').value = match.model;
+  document.getElementById('vv-new-year').value = match.year;
+}
+
+// ═══ "Vérifier les correspondances" — pour les modèles DÉJÀ entrés avant
+// l'ajout du pick-list ci-dessus. Compare chaque modèle de ta base de prix
+// aux véhicules réels de tes clients ; signale ceux qui ne correspondent à
+// aucun client (orthographe différente comme "elentra"/"Elantra") et
+// propose une correction en un clic quand un véhicule client très proche
+// est trouvé (même année, modèle quasi identique). ═══
+function vvLevenshtein(a, b){
+  a = String(a||'').toLowerCase(); b = String(b||'').toLowerCase();
+  var m = a.length, n = b.length;
+  if(!m) return n; if(!n) return m;
+  var prev = []; for(var j=0;j<=n;j++) prev[j]=j;
+  for(var i=1;i<=m;i++){
+    var cur = [i];
+    for(var j2=1;j2<=n;j2++){
+      cur[j2] = a[i-1]===b[j2-1] ? prev[j2-1] : 1+Math.min(prev[j2-1], prev[j2], cur[j2-1]);
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+async function openVehicleValueMatchCheck(){
+  var already = document.getElementById('vv-match-modal');
+  if(already) already.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'vv-match-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(23,26,32,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.innerHTML = '<div style="background:white;border-radius:18px;padding:1.75rem;max-width:560px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">'
+    +'<h3 style="font-size:17px;font-weight:800;margin-bottom:.25rem">🔄 Vérification des correspondances</h3>'
+    +'<div id="vv-match-body" style="font-size:13px;color:#6B7280;margin:1rem 0"><span class="spinner"></span> Comparaison en cours...</div>'
+    +'<button onclick="document.getElementById(\'vv-match-modal\').remove()" style="width:100%;padding:12px;background:#F3F4F6;color:#6B7280;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Fermer</button>'
+    +'</div>';
+  document.body.appendChild(modal);
+  modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
+
+  var combos = await getClientVehicleCombos();
+  var vvSnap = await db.collection('vehicle_values').get();
+  var currentValues = vvSnap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+
+  var comboKeys = {};
+  combos.forEach(function(c){ comboKeys[vvKey(c.make,c.model,c.year)] = c; });
+
+  var ok = [], mismatched = [];
+  currentValues.forEach(function(v){
+    var key = vvKey(v.make, v.model, v.year);
+    if(comboKeys[key]){ ok.push(v); return; }
+    // Cherche le véhicule client le plus proche (même année, modèle proche)
+    var best = null, bestDist = 999;
+    combos.forEach(function(c){
+      if(c.year !== v.year) return;
+      var dist = vvLevenshtein(v.make+' '+v.model, c.make+' '+c.model);
+      if(dist < bestDist){ bestDist = dist; best = c; }
+    });
+    mismatched.push({ v: v, suggestion: (best && bestDist <= 3) ? best : null });
+  });
+
+  var body = document.getElementById('vv-match-body');
+  if(!body) return; // modale fermée entre-temps
+
+  var html = '<div style="background:#ECFDF5;border:1px solid #6EE7B7;border-radius:8px;padding:10px 12px;font-size:12.5px;color:#065F46;margin-bottom:1rem">✅ '+ok.length+' modèle(s) correspondent déjà à un véhicule client — leur courbe s\'affiche correctement.</div>';
+
+  if(!mismatched.length){
+    html += '<div style="font-size:13px;color:#6B7280">Aucun autre modèle à vérifier.</div>';
+  } else {
+    mismatched.forEach(function(item){
+      var v = item.v, s = item.suggestion;
+      html += '<div style="border:1px solid #FECACA;background:#FEF2F2;border-radius:10px;padding:12px 14px;margin-bottom:10px">';
+      html += '<div style="font-weight:700;font-size:13.5px;color:#991B1B">⚠️ '+v.make+' '+v.model+' '+v.year+'</div>';
+      if(s){
+        html += '<div style="font-size:12.5px;color:#374151;margin:6px 0">Aucun client avec cette orthographe exacte, mais trouvé chez un client : <b>'+s.make+' '+s.model+' '+s.year+'</b></div>';
+        html += '<button onclick="vvApplyRename(\''+v.id+'\',\''+s.make.replace(/'/g,"\\'")+'\',\''+s.model.replace(/'/g,"\\'")+'\','+s.year+')" style="padding:8px 14px;background:#0E9F6E;color:white;border:none;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit">✓ Corriger vers "'+s.make+' '+s.model+' '+s.year+'"</button>';
+      } else {
+        html += '<div style="font-size:12.5px;color:#374151;margin:6px 0">Aucun client avec ce véhicule pour l\'instant (ou aucun avec la même année) — rien à corriger ; la courbe s\'affichera dès qu\'un client avec ce modèle sera dans le système.</div>';
+      }
+      html += '</div>';
+    });
+  }
+  body.innerHTML = html;
+}
+
+async function vvApplyRename(oldId, newMake, newModel, newYear){
+  var btn = event && event.target; if(btn){ btn.disabled = true; btn.textContent = '...'; }
+  var oldDoc = await db.collection('vehicle_values').doc(oldId).get();
+  var points = oldDoc.exists ? (oldDoc.data().points || []) : [];
+  var newId = vvKey(newMake, newModel, newYear);
+  try {
+    await db.collection('vehicle_values').doc(newId).set({
+      make: newMake, model: newModel, year: newYear, points: points,
+      updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    if(newId !== oldId) await db.collection('vehicle_values').doc(oldId).delete();
+    loadVehicleValues();
+    openVehicleValueMatchCheck();
+  } catch(e){ alert('Erreur : '+(e.message||e)); }
 }
 
 async function saveNewVehicleValueModel(){
