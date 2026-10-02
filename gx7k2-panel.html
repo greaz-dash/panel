@@ -1831,6 +1831,13 @@ function openEditVehicleValueNameForm(id){
   modal.innerHTML = '<div style="background:white;border-radius:18px;padding:1.75rem;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25)">'
     +'<h3 style="font-size:17px;font-weight:800;margin-bottom:1rem">✏️ Modifier le nom</h3>'
     +'<div style="font-size:12px;color:#6B7280;margin-bottom:1rem">Les '+v.points.length+' point(s) déjà entrés restent intacts — seul le nom du modèle change.</div>'
+    +'<div style="margin-bottom:14px">'
+    +'<label style="font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">🔍 Choisir parmi les véhicules de tes clients (recommandé)</label>'
+    +'<input id="vve-pick-existing" type="text" list="vve-vehicle-suggest" placeholder="Tape pour chercher..." autocomplete="off" oninput="vvPickExistingVehicleForEdit()" style="width:100%;padding:10px 12px;border:1.5px solid #93C5FD;border-radius:8px;font-size:14px;background:#EFF6FF">'
+    +'<datalist id="vve-vehicle-suggest"></datalist>'
+    +'<div style="font-size:11px;color:#6B7280;margin-top:4px">Choisir ici garantit la même orthographe exacte que dans le dossier du client.</div>'
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:8px;margin:14px 0;color:#9CA3AF;font-size:11px"><div style="flex:1;height:1px;background:#E5E7EB"></div>OU MODIFIER MANUELLEMENT<div style="flex:1;height:1px;background:#E5E7EB"></div></div>'
     +'<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Marque *</label><input id="vve-make" type="text" value="'+v.make.replace(/"/g,'&quot;')+'" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px"></div>'
     +'<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Modèle *</label><input id="vve-model" type="text" value="'+v.model.replace(/"/g,'&quot;')+'" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px"></div>'
     +'<div style="margin-bottom:1.25rem"><label style="font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Année *</label><input id="vve-year" type="number" value="'+v.year+'" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:14px"></div>'
@@ -1841,7 +1848,23 @@ function openEditVehicleValueNameForm(id){
     +'</div></div>';
   document.body.appendChild(modal);
   modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
-  setTimeout(function(){ var f=document.getElementById('vve-make'); if(f) f.focus(); }, 50);
+  setTimeout(function(){ var f=document.getElementById('vve-pick-existing'); if(f) f.focus(); }, 50);
+
+  getClientVehicleCombos().then(function(list){
+    var dl = document.getElementById('vve-vehicle-suggest');
+    if(!dl) return; // modale fermée avant que la requête réponde
+    dl.innerHTML = list.map(function(c){ return '<option value="'+c.label.replace(/"/g,'&quot;')+'">'; }).join('');
+  });
+}
+
+function vvPickExistingVehicleForEdit(){
+  var typed = (document.getElementById('vve-pick-existing').value || '').trim();
+  if(!typed || !_clientVehicleCombos) return;
+  var match = _clientVehicleCombos.find(function(c){ return c.label === typed; });
+  if(!match) return;
+  document.getElementById('vve-make').value = match.make;
+  document.getElementById('vve-model').value = match.model;
+  document.getElementById('vve-year').value = match.year;
 }
 
 async function saveEditVehicleValueName(oldId){
