@@ -1760,6 +1760,11 @@ function vvInterpolate(points, km){
   return Math.round(last2.price + (km-last2.km) * (last2.price-last1.price)/(last2.km-last1.km));
 }
 
+// Point en cours de modification (un seul à la fois) : {id, idx}. Permet de
+// corriger un prix/kilométrage déjà entré sans devoir le supprimer et tout
+// recommencer — surtout utile pour ajuster le DERNIER point (prix du jour).
+var _vvEditingPoint = null;
+
 function vvCard(v){
   var sid = v.id.replace(/[^a-z0-9]/gi,'');
   var title = v.make+' '+v.model+' '+v.year;
@@ -1776,10 +1781,22 @@ function vvCard(v){
     + (v.points.length >= 2 ? vehicleValueCurveSvg(v, sid) : '<div style="font-size:12px;color:var(--muted);margin:10px 0">Ajoute au moins 2 points (kilométrage + prix) pour voir apparaître une courbe.</div>')
     +"<div style='margin-top:12px'><div class='il' style='margin-bottom:6px'>📍 Points entrés</div>"
     + (v.points.length ? v.points.map(function(p,i){
+        var isEditing = _vvEditingPoint && _vvEditingPoint.id===v.id && _vvEditingPoint.idx===i;
+        if(isEditing){
+          return "<div style='display:flex;align-items:center;gap:8px;padding:7px 10px;background:#EFF6FF;border:1px solid #93C5FD;border-radius:8px;margin-bottom:5px'>"
+            +"<input type='number' id='vv-edit-km-"+sid+"-"+i+"' value='"+p.km+"' style='width:100px;padding:6px 8px;border:1px solid #93C5FD;border-radius:6px;font-size:12.5px'>"
+            +"<span style='font-size:11px;color:#6B7280'>km</span>"
+            +"<input type='number' id='vv-edit-price-"+sid+"-"+i+"' value='"+p.price+"' style='width:100px;padding:6px 8px;border:1px solid #93C5FD;border-radius:6px;font-size:12.5px'>"
+            +"<span style='font-size:11px;color:#6B7280'>$</span>"
+            +"<button class='tool-btn green' style='padding:6px 10px;font-size:12px' onclick='saveVehicleValuePointEdit(\""+v.id+"\","+i+",\""+sid+"\")'>✓</button>"
+            +"<button class='close-btn' onclick='cancelVehicleValuePointEdit()'>✕</button>"
+            +"</div>";
+        }
         return "<div style='display:flex;align-items:center;gap:10px;padding:7px 10px;background:var(--surface);border-radius:8px;margin-bottom:5px;font-size:12.5px'>"
           +"<span style='flex:1'><b>"+Number(p.price).toLocaleString('fr-CA')+" $</b> à "+Number(p.km).toLocaleString('fr-CA')+" km</span>"
           +"<span style='color:var(--muted);font-size:11px'>"+(p.date||'')+"</span>"
-          +"<button class='close-btn' onclick='deleteVehicleValuePoint(\""+v.id+"\","+i+")'>✕</button>"
+          +"<button class='close-btn' title='Modifier' onclick='editVehicleValuePoint(\""+v.id+"\","+i+")'>✏️</button>"
+          +"<button class='close-btn' title='Supprimer' onclick='deleteVehicleValuePoint(\""+v.id+"\","+i+")'>✕</button>"
           +"</div>";
       }).join('') : "<div style='font-size:12px;color:var(--muted)'>Aucun point pour l'instant.</div>")
     +"</div>"
@@ -2065,6 +2082,35 @@ async function addVehicleValuePoint(id, sid){
   try {
     await db.collection('vehicle_values').doc(id).set({ points: newPoints, updated_at: firebase.firestore.FieldValue.serverTimestamp() }, { merge:true });
     v.points = newPoints;
+    renderVehicleValues();
+  } catch(e){ alert('Erreur : '+(e.message||e)); }
+}
+
+function editVehicleValuePoint(id, idx){
+  _vvEditingPoint = { id: id, idx: idx };
+  renderVehicleValues();
+}
+
+function cancelVehicleValuePointEdit(){
+  _vvEditingPoint = null;
+  renderVehicleValues();
+}
+
+async function saveVehicleValuePointEdit(id, idx, sid){
+  var kmEl = document.getElementById('vv-edit-km-'+sid+'-'+idx);
+  var priceEl = document.getElementById('vv-edit-price-'+sid+'-'+idx);
+  var km = parseInt(kmEl.value, 10);
+  var price = parseFloat(priceEl.value);
+  if(!km || km<=0 || !price || price<=0){ alert('Entre un kilométrage et un prix valides.'); return; }
+  var v = _vehicleValues.find(function(x){ return x.id===id; });
+  if(!v) return;
+  var newPoints = v.points.slice();
+  newPoints[idx] = Object.assign({}, newPoints[idx], { km: km, price: price });
+  newPoints.sort(function(a,b){ return a.km-b.km; });
+  try {
+    await db.collection('vehicle_values').doc(id).set({ points: newPoints, updated_at: firebase.firestore.FieldValue.serverTimestamp() }, { merge:true });
+    v.points = newPoints;
+    _vvEditingPoint = null;
     renderVehicleValues();
   } catch(e){ alert('Erreur : '+(e.message||e)); }
 }
