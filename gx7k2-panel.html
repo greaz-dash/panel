@@ -556,6 +556,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
       <div class="toolbar">
         <input class="search-input" type="text" id="crm-search" placeholder="🔍 Nom, courriel, téléphone, ville, véhicule..." oninput="renderCRM()">
         <button class="tool-btn green" onclick="openNewClientModal()">➕ Ajouter un client</button>
+        <button class="tool-btn" onclick="openTaskTemplatesModal()">⚙️ Tâches récurrentes</button>
         <button class="tool-btn" onclick="buildCRM()">🔄 Rafraîchir</button>
       </div>
       <div class="toolbar" style="margin-top:0">
@@ -2512,12 +2513,22 @@ async function loadWaitingDemandes(){
 var _crmClients = [];
 var _crmSort = 'recent';
 
+// ── Tâches récurrentes + notes internes par client (voir buildCRM) ──
+// _taskTemplates : liste globale (s'applique à tous les clients du répertoire).
+// _crmInternal : données privées par client (jamais vues par le client), clé
+// = crmSafeKey(c) — même façon de dériver un id que le reste du répertoire
+// (voir les id des cartes "body-"+...). { task_completions:{tplId:{last_done_at,by}}, notes:[{text,author,time}] }
+var _taskTemplates = [];
+var _crmInternal = {};
+
 function crmKey(c){
   // Clé de déduplication : courriel en priorité, sinon téléphone
   var email = (c.client_email||c.email||'').trim().toLowerCase();
   var phone = (c.client_phone||c.phone||'').replace(/[^0-9]/g,'');
   return email || phone || null;
 }
+
+function crmSafeKey(c){ return (c.key||'').replace(/[^a-z0-9]/gi,''); }
 
 function crmDate(c){
   if(c.created_at && c.created_at.toDate) return c.created_at.toDate();
@@ -2547,6 +2558,15 @@ async function buildCRM(){
     // Clients ajoutés manuellement
     var cSnap = await db.collection('clients_crm').get();
     manualClients = cSnap.docs.map(function(d){ return Object.assign({id:d.id, _manualId:d.id}, d.data()); });
+    // Tâches récurrentes (liste globale) + données internes par client (tâches
+    // cochées + notes d'équipe) — jamais vues par le client, affichées sur
+    // chaque fiche du répertoire.
+    var tplSnap = await db.collection('recurring_task_templates').get();
+    _taskTemplates = tplSnap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
+      .sort(function(a,b){ return (a.frequency_months||0)-(b.frequency_months||0) || (a.name||'').localeCompare(b.name||''); });
+    var intSnap = await db.collection('crm_client_internal').get();
+    _crmInternal = {};
+    intSnap.docs.forEach(function(d){ _crmInternal[d.id] = d.data(); });
   } catch(e){
     listEl.innerHTML = '<div class="loading">⚠️ '+e.message+'</div>';
     return;
@@ -2663,6 +2683,9 @@ async function buildCRM(){
   // besoin de quoi. Trié pour montrer l'item le plus urgent en premier.
   _crmClients.forEach(function(c){
     c.maintAlerts = c.km ? dashComputeMaintenancePlan({ km:c.km, make:c.vMake, model:c.vModel, fuel:c.vFuel }).filter(function(it){ return it.status !== 'ok'; }) : [];
+    var internal = _crmInternal[crmSafeKey(c)] || {};
+    c.taskCompletions = internal.task_completions || {};
+    c.internalNotes = internal.notes || [];
   });
   document.getElementById('tbcrm').textContent = _crmClients.length;
   renderCRMStats();
@@ -2812,6 +2835,8 @@ function crmCard(c){
           +"</div>";
       }).join('')
     +"</div>"
+    + renderClientTasksSection(c)
+    + renderClientNotesSection(c)
     // Actions pour joindre le client
     +"<div class='action-btns' style='margin-top:12px'>"
     +(c.phone?"<a href='tel:"+phoneClean+"' class='abtn abtn-call'>📞 Appeler</a><a href='sms:"+phoneClean+"' class='abtn abtn-sms'>💬 SMS</a>":"")
@@ -2821,6 +2846,189 @@ function crmCard(c){
     +(c.manualId?"<button class='abtn abtn-del' onclick='deleteManualClient(\""+c.manualId+"\")'>🗑 Retirer</button>":"")
     +"</div>"
     +"</div></div>";
+}
+
+/* ══════════ TÂCHES RÉCURRENTES + NOTES INTERNES (par client) ══════════
+   Deux affaires distinctes du "Dossier" (historique d'entretien réel, visible
+   par le client) : ici c'est 100% interne à l'équipe Greaz, jamais vu par le
+   client.
+   - _taskTemplates : la liste des tâches récurrentes (nom + fréquence en
+     mois), configurée une fois par l'équipe et appliquée à TOUS les clients
+     du répertoire (collection recurring_task_templates).
+   - crm_client_internal/{crmSafeKey} : par client, {task_completions, notes}.
+     Une tâche est "due" quand aujourd'hui >= dernière fois faite + fréquence —
+     calculé à l'affichage, pas besoin de job qui réinitialise quoi que ce soit
+     chaque mois. */
+
+function freqLabel(months){
+  months = Number(months)||1;
+  if(months === 1) return 'Tous les mois';
+  if(months === 12) return 'Une fois par année';
+  return 'Aux '+months+' mois';
+}
+
+function addMonths(date, months){
+  var d = new Date(date.getTime());
+  d.setMonth(d.getMonth() + Number(months||0));
+  return d;
+}
+
+function taskTemplateStatus(tpl, completion){
+  if(!completion || !completion.last_done_at){
+    return { state:'never', label:'Jamais fait' };
+  }
+  var lastDone = new Date(completion.last_done_at);
+  var due = addMonths(lastDone, tpl.frequency_months);
+  var today = new Date();
+  var lastDoneStr = lastDone.toLocaleDateString('fr-CA',{day:'numeric',month:'short'});
+  if(today >= due){
+    var lateDays = Math.round((today-due)/86400000);
+    return { state:'due', label: 'Fait le '+lastDoneStr+' · '+(lateDays>0 ? ('en retard de '+lateDays+' j') : 'dû aujourd\'hui') };
+  }
+  var inDays = Math.round((due-today)/86400000);
+  return { state:'ok', label:'Fait le '+lastDoneStr+' · prochain dans '+inDays+' j' };
+}
+
+function renderClientTasksSection(c){
+  if(!_taskTemplates.length){
+    return "<div style='margin-top:14px'><div class='il' style='margin-bottom:8px'>✅ Tâches récurrentes</div>"
+      +"<div style='font-size:12px;color:var(--muted)'>Aucune tâche récurrente configurée pour l'instant. <span style='color:var(--blue);cursor:pointer;font-weight:600' onclick='openTaskTemplatesModal()'>⚙️ En créer une →</span></div></div>";
+  }
+  var sk = crmSafeKey(c);
+  var rows = _taskTemplates.map(function(tpl){
+    var completion = (c.taskCompletions||{})[tpl.id];
+    var st = taskTemplateStatus(tpl, completion);
+    var color = st.state==='ok' ? '#0B7D57' : (st.state==='due' ? '#DC2626' : '#D97706');
+    var bg = st.state==='ok' ? '#F0FDF4' : (st.state==='due' ? '#FEF2F2' : '#FFFBEB');
+    var isDone = st.state==='ok';
+    return "<div style='display:flex;align-items:center;gap:10px;padding:9px 11px;background:"+bg+";border-radius:8px;margin-bottom:6px'>"
+      +"<button type='button' title='"+(isDone?'Retirer':'Marquer fait aujourd\'hui')+"' onclick=\"toggleTaskDone('"+sk+"','"+tpl.id+"',"+isDone+")\" style='width:24px;height:24px;border-radius:7px;border:1.5px solid "+color+";background:"+(isDone?color:'white')+";color:white;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;padding:0'>"+(isDone?'✓':'')+"</button>"
+      +"<div style='flex:1;min-width:0'><div style='font-size:12.5px;font-weight:700;color:var(--ink)'>"+tpl.name+"</div>"
+      +"<div style='font-size:11px;color:"+color+";margin-top:1px'>"+freqLabel(tpl.frequency_months)+" · "+st.label+"</div></div>"
+      +"</div>";
+  }).join('');
+  return "<div style='margin-top:14px'><div class='il' style='margin-bottom:8px;display:flex;align-items:center;justify-content:space-between'>✅ Tâches récurrentes <span style='color:var(--blue);cursor:pointer;font-weight:600;font-size:11px' onclick='openTaskTemplatesModal()'>⚙️ Gérer</span></div>"+rows+"</div>";
+}
+
+function renderClientNotesSection(c){
+  var sk = crmSafeKey(c);
+  var notes = c.internalNotes || [];
+  var list = notes.length
+    ? "<div class='notes-list'>"+notes.slice().reverse().map(function(n){ return "<div class='note-item'><div>"+n.text+"</div><div class='note-meta'>"+n.author+" · "+n.time+"</div></div>"; }).join('')+"</div>"
+    : "<div style='font-size:12px;color:var(--muted);margin-bottom:6px'>Aucune note pour l'instant.</div>";
+  return "<div style='margin-top:14px'><div class='il' style='margin-bottom:8px'>📝 Notes internes <span style='font-size:10px;font-weight:500;color:var(--muted)'>(jamais vues par le client)</span></div>"
+    + list
+    +"<div class='note-input-row' style='margin-top:8px'><textarea class='note-input' id='cin-"+sk+"' rows='1' placeholder='Écrire une note sur ce client...'></textarea>"
+    +"<button class='note-add-btn' onclick=\"addClientInternalNote('"+sk+"')\">Ajouter</button></div>"
+    +"</div>";
+}
+
+/* Garde le body de la carte ouvert après un re-rendu complet du répertoire
+   (même pattern que addNote() plus haut pour les leads/mécaniciens). */
+function reopenCard(sk){
+  setTimeout(function(){ var b = document.getElementById('body-'+sk); if(b) b.classList.add('open'); }, 50);
+}
+
+async function toggleTaskDone(sk, templateId, isDone){
+  var c = _crmClients.find(function(x){ return crmSafeKey(x)===sk; });
+  if(!c) return;
+  if(isDone && !confirm('Retirer cette tâche comme "faite" pour ce client ?')) return;
+  var completions = Object.assign({}, c.taskCompletions);
+  if(isDone){ delete completions[templateId]; }
+  else { completions[templateId] = { last_done_at: new Date().toISOString(), by: (currentAdmin&&currentAdmin.email)||'' }; }
+  try {
+    await db.collection('crm_client_internal').doc(sk).set({ task_completions: completions }, { merge:true });
+    c.taskCompletions = completions;
+    _crmInternal[sk] = Object.assign({}, _crmInternal[sk], { task_completions: completions });
+    renderCRM();
+    reopenCard(sk);
+  } catch(e){ alert('Erreur : '+e.message); }
+}
+
+async function addClientInternalNote(sk){
+  var input = document.getElementById('cin-'+sk);
+  var text = input && input.value.trim();
+  if(!text) return;
+  var c = _crmClients.find(function(x){ return crmSafeKey(x)===sk; });
+  if(!c) return;
+  var newNote = { text:text, author:(currentAdmin&&currentAdmin.email)||'Équipe Greaz', time:new Date().toLocaleString('fr-CA') };
+  var notes = (c.internalNotes||[]).concat([newNote]);
+  try {
+    await db.collection('crm_client_internal').doc(sk).set({ notes: notes }, { merge:true });
+    c.internalNotes = notes;
+    _crmInternal[sk] = Object.assign({}, _crmInternal[sk], { notes: notes });
+    renderCRM();
+    reopenCard(sk);
+  } catch(e){ alert('Erreur : '+e.message); }
+}
+
+/* ── Gestion des tâches récurrentes (modal, liste globale) ── */
+function openTaskTemplatesModal(){
+  var modal = document.createElement('div');
+  modal.id = 'task-tpl-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(23,26,32,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto';
+  modal.innerHTML = '<div style="background:white;border-radius:18px;padding:1.75rem;max-width:480px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">'
+    +'<h3 style="font-size:17px;font-weight:800;margin-bottom:4px">⚙️ Tâches récurrentes</h3>'
+    +'<p style="font-size:12.5px;color:#6B7280;margin-bottom:1.1rem">Ces tâches s\'appliquent à tous les clients du répertoire — ex. « Appeler pour un suivi » aux 3 mois, « Vérifier l\'assurance » une fois par année. Coche-les directement sur la fiche de chaque client.</p>'
+    +'<div id="tpl-list">'+renderTaskTemplatesList()+'</div>'
+    +'<div style="border-top:1px solid #F3F4F6;margin-top:1.1rem;padding-top:1.1rem">'
+    +'<div style="font-size:12px;font-weight:700;color:#6B7280;margin-bottom:8px">+ Nouvelle tâche</div>'
+    +'<input id="tpl-name" type="text" placeholder="Ex. Appeler pour un suivi" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13.5px;font-family:inherit;margin-bottom:8px">'
+    +'<select id="tpl-freq" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13.5px;font-family:inherit;margin-bottom:10px">'
+    +'<option value="1">Tous les mois</option><option value="2">Aux 2 mois</option><option value="3" selected>Aux 3 mois</option>'
+    +'<option value="6">Aux 6 mois</option><option value="12">Une fois par année</option></select>'
+    +'<div id="tpl-err" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:9px 12px;border-radius:8px;font-size:12.5px;margin-bottom:10px"></div>'
+    +'<button id="tpl-save-btn" onclick="saveNewTaskTemplate()" style="width:100%;padding:12px;background:#0E9F6E;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">➕ Ajouter cette tâche</button>'
+    +'</div>'
+    +'<button onclick="document.getElementById(\'task-tpl-modal\').remove()" style="width:100%;margin-top:1rem;padding:11px;background:#F3F4F6;color:#6B7280;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Fermer</button>'
+    +'</div>';
+  document.body.appendChild(modal);
+  modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
+  setTimeout(function(){ var f=document.getElementById('tpl-name'); if(f) f.focus(); }, 50);
+}
+
+function renderTaskTemplatesList(){
+  if(!_taskTemplates.length) return '<div style="font-size:12.5px;color:#9CA3AF;padding:8px 0">Aucune tâche récurrente pour l\'instant.</div>';
+  return _taskTemplates.map(function(t){
+    return '<div style="display:flex;align-items:center;gap:8px;padding:9px 11px;background:#F9FAFB;border-radius:9px;margin-bottom:6px">'
+      +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#1C2040">'+t.name+'</div>'
+      +'<div style="font-size:11px;color:#6B7280">'+freqLabel(t.frequency_months)+'</div></div>'
+      +'<button onclick="deleteTaskTemplate(\''+t.id+'\')" style="width:26px;height:26px;border-radius:7px;border:none;background:#FEF2F2;color:#DC2626;cursor:pointer;font-size:12px">🗑</button>'
+      +'</div>';
+  }).join('');
+}
+
+async function saveNewTaskTemplate(){
+  var errEl = document.getElementById('tpl-err');
+  var btn = document.getElementById('tpl-save-btn');
+  errEl.style.display = 'none';
+  var name = (document.getElementById('tpl-name').value||'').trim();
+  var freq = Number(document.getElementById('tpl-freq').value||3);
+  if(!name){ errEl.textContent='Donne un nom à la tâche.'; errEl.style.display='block'; return; }
+  btn.disabled = true; btn.textContent = '⏳ Ajout...';
+  try {
+    var ref = await db.collection('recurring_task_templates').add({ name:name, frequency_months:freq, created_at:firebase.firestore.FieldValue.serverTimestamp() });
+    _taskTemplates.push({ id:ref.id, name:name, frequency_months:freq });
+    _taskTemplates.sort(function(a,b){ return (a.frequency_months||0)-(b.frequency_months||0) || (a.name||'').localeCompare(b.name||''); });
+    var listEl = document.getElementById('tpl-list');
+    if(listEl) listEl.innerHTML = renderTaskTemplatesList();
+    document.getElementById('tpl-name').value = '';
+    renderCRM();
+  } catch(e){
+    errEl.textContent = 'Erreur : '+e.message; errEl.style.display='block';
+  }
+  btn.disabled = false; btn.textContent = '➕ Ajouter cette tâche';
+}
+
+async function deleteTaskTemplate(id){
+  if(!confirm('Supprimer cette tâche récurrente pour tous les clients ?')) return;
+  try {
+    await db.collection('recurring_task_templates').doc(id).delete();
+    _taskTemplates = _taskTemplates.filter(function(t){ return t.id!==id; });
+    var listEl = document.getElementById('tpl-list');
+    if(listEl) listEl.innerHTML = renderTaskTemplatesList();
+    renderCRM();
+  } catch(e){ alert('Erreur : '+e.message); }
 }
 
 /* Corrige le nom, téléphone ou adresse d'une fiche directement depuis le Répertoire —
