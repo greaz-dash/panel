@@ -2824,7 +2824,10 @@ function crmCard(c){
     +"<div class='info-item'><div class='il'>Téléphone</div><div class='iv'>"+(c.phone?"<a href='tel:"+phoneClean+"'>"+c.phone+"</a>":"—")+"</div></div>"
     +"<div class='info-item'><div class='il'>Adresse</div><div class='iv'>"+(c.address||c.city||"—")+"</div></div>"
     +"<div class='info-item'><div class='il'>Véhicule</div><div class='iv'>"+(c.vehicle||"—")+"</div></div>"
-    +(c.km?"<div class='info-item'><div class='il'>Kilométrage</div><div class='iv'>"+Number(c.km).toLocaleString('fr-CA')+" km</div></div>":"")
+    +(c.uid
+        ? "<div class='info-item'><div class='il'>Kilométrage</div><div class='iv'>"+(c.km?Number(c.km).toLocaleString('fr-CA')+" km":"—")+" <span onclick=\"quickEditKm('"+c.key.replace(/[^a-z0-9]/gi,'')+"')\" style='cursor:pointer;color:var(--blue);font-weight:700;font-size:11px;margin-left:4px' title='Changer le kilométrage'>✏️ modifier</span></div></div>"
+        : (c.km?"<div class='info-item'><div class='il'>Kilométrage</div><div class='iv'>"+Number(c.km).toLocaleString('fr-CA')+" km</div></div>":"")
+      )
     +(c.birthdate?"<div class='info-item'><div class='il'>Naissance</div><div class='iv'>"+c.birthdate+"</div></div>":"")
     +(c.insurer?"<div class='info-item'><div class='il'>Assureur</div><div class='iv'>"+c.insurer+(c.insurer_since?' · '+c.insurer_since:'')+"</div></div>":"")
     +(c.financed?"<div class='info-item'><div class='il'>Financement auto</div><div class='iv'>"+c.financed+"</div></div>":"")
@@ -3313,6 +3316,46 @@ async function saveCrmClientEdit(skey){
     renderCRM();
   } catch(e){
     showErr('Erreur : '+e.message);
+  }
+}
+
+/* Édition rapide du kilométrage directement depuis la fiche client (sans
+   passer par le bilan mensuel ni ouvrir le Dossier). Dès que le nouveau
+   kilométrage est enregistré, on recalcule et on affiche tout de suite ce
+   que ça annonce comme entretien à venir côté client — exactement ce qu'il
+   verrait lui-même dans son espace — pour pouvoir lui en parler au besoin. */
+async function quickEditKm(skey){
+  var c = _crmClients.find(function(x){ return x.key.replace(/[^a-z0-9]/gi,'') === skey; });
+  if(!c) return;
+  if(!c.uid){ alert('Le kilométrage ne peut être mis à jour que pour les clients avec un compte Greaz (c\'est là qu\'il est enregistré).'); return; }
+  var current = c.km || '';
+  var input = prompt('Nouveau kilométrage pour '+c.name+' :', current);
+  if(input === null) return; // annulé
+  var km = parseInt(String(input).replace(/[^0-9]/g,''), 10);
+  if(!km || km <= 0){ alert('Entre un kilométrage valide (nombre positif).'); return; }
+
+  try {
+    var snap = await db.collection('clients').doc(c.uid).get();
+    var vehicles = (snap.data() && snap.data().vehicles) || [];
+    vehicles[0] = Object.assign({}, vehicles[0]||{}, { km: km });
+    await db.collection('clients').doc(c.uid).update({ vehicles: vehicles });
+
+    c.km = km;
+    var alerts = dashComputeMaintenancePlan({ km:km, make:c.vMake, model:c.vModel, fuel:c.vFuel }).filter(function(it){ return it.status !== 'ok'; });
+    c.maintAlerts = alerts;
+    renderCRM();
+    reopenCard(skey);
+
+    var msg = 'Kilométrage mis à jour : ' + km.toLocaleString('fr-CA') + ' km.\n\n';
+    if(alerts.length){
+      msg += 'Ce que ça annonce côté client (ce qu\'il verrait dans son espace) :\n'
+        + alerts.slice(0,5).map(function(a){ return '• '+a.nom+' — '+(a.status==='due'?'rendu là':'bientôt, vers '+Number(a.nextDue).toLocaleString('fr-CA')+' km'); }).join('\n');
+    } else {
+      msg += 'Rien d\'urgent à signaler selon ce kilométrage.';
+    }
+    alert(msg);
+  } catch(e){
+    alert('Erreur lors de la mise à jour du kilométrage : ' + e.message);
   }
 }
 
