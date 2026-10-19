@@ -907,13 +907,14 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
 emailjs.init({ publicKey: "wVQqsSCjIEvcucyEc" });
 var EJS_SERVICE = "service_2v5zpll";
 var EJS_TEMPLATE_CONFIRM = "template_b0le5ae"; // ← template de confirmation RDV
-// ⚠️ À CONFIGURER : crée un NOUVEAU template sur ton compte EmailJS, dédié au
-// bilan mensuel (différent de template_b0le5ae, qui est fait pour une confirmation
-// de RDV avec ses propres champs). Le plus simple : un template avec un sujet
-// "{{subject}}" et un corps qui affiche juste "{{message}}" tel quel (texte brut,
-// pas de mise en page compliquée à faire) — colle ensuite l'ID du nouveau template
-// ici, à la place du texte entre guillemets.
+// Le bilan mensuel utilise un AUTRE compte EmailJS (celui-ci n'a pas le
+// template dédié au bilan). Le SDK EmailJS permet de passer un service_id,
+// un template_id et une clé publique différents à chaque envoi, donc ces
+// 3 valeurs restent propres au compte où template_3s9qmds a été créé/configuré,
+// sans toucher au compte utilisé pour les confirmations de RDV ci-dessus.
 var EJS_TEMPLATE_BILAN = "template_3s9qmds";
+var EJS_SERVICE_BILAN = "service_h2f013c";
+var EJS_PUBLICKEY_BILAN = "JVOVWBeEo7L8yt7T1";
 var SITE_DOMAIN = "https://greaz.ca"; // ← change ici si ton domaine change
 var currentAdmin = null;      // utilisateur Firebase connecté
 var currentRole = null;       // 'founder' | 'gestionnaire' | 'support'
@@ -3139,12 +3140,12 @@ async function sendBilanEmail(sk){
   btn.disabled = true; btn.textContent = '⏳ Envoi...';
   var bodyText = composeBilanText(c, data);
   try {
-    await emailjs.send(EJS_SERVICE, EJS_TEMPLATE_BILAN, {
+    await emailjs.send(EJS_SERVICE_BILAN, EJS_TEMPLATE_BILAN, {
       to_email: c.email,
       client_name: c.name || '',
       subject: 'Ton bilan mensuel Greaz 🚗',
       message: bodyText,
-    });
+    }, { publicKey: EJS_PUBLICKEY_BILAN });
     var log = bilanKmLog(sk).concat([{ km:data.km, date:new Date().toISOString() }]);
     var bilans = ((_crmInternal[sk]&&_crmInternal[sk].bilans)||[]).concat([{
       date: new Date().toISOString(), km:data.km, problems:data.problems, by:(currentAdmin&&currentAdmin.email)||'',
