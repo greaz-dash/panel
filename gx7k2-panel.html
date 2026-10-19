@@ -907,6 +907,13 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
 emailjs.init({ publicKey: "wVQqsSCjIEvcucyEc" });
 var EJS_SERVICE = "service_2v5zpll";
 var EJS_TEMPLATE_CONFIRM = "template_b0le5ae"; // ← template de confirmation RDV
+// ⚠️ À CONFIGURER : crée un NOUVEAU template sur ton compte EmailJS, dédié au
+// bilan mensuel (différent de template_b0le5ae, qui est fait pour une confirmation
+// de RDV avec ses propres champs). Le plus simple : un template avec un sujet
+// "{{subject}}" et un corps qui affiche juste "{{message}}" tel quel (texte brut,
+// pas de mise en page compliquée à faire) — colle ensuite l'ID du nouveau template
+// ici, à la place du texte entre guillemets.
+var EJS_TEMPLATE_BILAN = "template_3s9qmds";
 var SITE_DOMAIN = "https://greaz.ca"; // ← change ici si ton domaine change
 var currentAdmin = null;      // utilisateur Firebase connecté
 var currentRole = null;       // 'founder' | 'gestionnaire' | 'support'
@@ -2837,6 +2844,7 @@ function crmCard(c){
     +"</div>"
     + renderClientTasksSection(c)
     + renderClientNotesSection(c)
+    + renderClientBilanSection(c)
     // Actions pour joindre le client
     +"<div class='action-btns' style='margin-top:12px'>"
     +(c.phone?"<a href='tel:"+phoneClean+"' class='abtn abtn-call'>📞 Appeler</a><a href='sms:"+phoneClean+"' class='abtn abtn-sms'>💬 SMS</a>":"")
@@ -2960,6 +2968,209 @@ async function addClientInternalNote(sk){
     renderCRM();
     reopenCard(sk);
   } catch(e){ alert('Erreur : '+e.message); }
+}
+
+/* ══════════ BILAN MENSUEL — courriel envoyé au client après l'appel ══════════
+   Le flow qu'on reproduit ici : pendant l'appel mensuel, tu prends le nouveau
+   kilométrage, tu notes les problèmes rapportés par le client, et Greaz
+   calcule automatiquement (1) les rappels d'entretien du constructeur selon
+   ce kilométrage (même table que le reste — DASH_MAINTENANCE) et (2) le
+   kilométrage parcouru depuis le dernier bilan / depuis le début de l'année,
+   à partir d'un petit historique de lectures qu'on garde par client. Tu
+   coches des conseils standards (ou tu en écris un), et ça part par courriel.
+   Tout est stocké dans crm_client_internal/{sk} (même doc que les tâches et
+   notes — km_log pour l'historique de kilométrage, bilans pour la liste des
+   bilans déjà envoyés), donc pas besoin de nouvelle règle Firestore. */
+
+var BILAN_ADVICE_CHIPS = [
+  { id:'tires-pressure', text:'Vérifie la pression de tes pneus régulièrement — elle baisse avec le froid.', def:true },
+  { id:'winter-tires', text:'Pense à faire poser tes pneus d\'hiver avant le 1er décembre.', def:true },
+  { id:'wheel-torque', text:'Vérifie le serrage de tes roues à chaque sortie après une installation ou une rotation de pneus récente (environ 100 km après).', def:true },
+  { id:'washer-fluid', text:'Fais le plein de liquide lave-glace d\'hiver (formule antigel).', def:false },
+  { id:'battery', text:'Le grand froid fatigue la batterie 12V — fais-la tester si ton auto a plus de 3-4 ans.', def:false },
+  { id:'warmup', text:'Laisse chauffer le moteur quelques secondes avant de rouler par grand froid.', def:false },
+];
+
+function bilanKmLog(sk){
+  return (_crmInternal[sk] && _crmInternal[sk].km_log) || [];
+}
+
+// Calcule le kilométrage parcouru depuis le dernier bilan, et depuis le début
+// de l'année en cours, à partir de l'historique de lectures du client.
+function bilanKmStats(sk, newKm){
+  var log = bilanKmLog(sk).slice().sort(function(a,b){ return new Date(a.date) - new Date(b.date); });
+  var out = { sinceLast:null, thisYear:null };
+  if(!log.length || !newKm) return out;
+  var now = new Date();
+  var last = log[log.length-1];
+  var lastKm = Number(last.km);
+  if(newKm > lastKm){
+    var days = Math.max(1, Math.round((now - new Date(last.date))/86400000));
+    out.sinceLast = { km: newKm - lastKm, days: days };
+  }
+  var janFirst = new Date(now.getFullYear(), 0, 1);
+  var baseline = null;
+  for(var i=log.length-1;i>=0;i--){
+    if(new Date(log[i].date) <= janFirst){ baseline = log[i]; break; }
+  }
+  if(!baseline) baseline = log[0]; // pas de lecture avant le 1er janvier -> la plus ancienne connue
+  if(baseline && newKm > Number(baseline.km)){
+    out.thisYear = { km: newKm - Number(baseline.km) };
+  }
+  return out;
+}
+
+function composeBilanText(c, opts){
+  var km = Number(opts.km)||0;
+  var plan = km ? dashComputeMaintenancePlan({ km:km, make:c.vMake, model:c.vModel, fuel:c.vFuel }).filter(function(it){ return it.status !== 'ok'; }) : [];
+  var stats = bilanKmStats(crmSafeKey(c), km);
+  var prenom = (c.name||'').split(' ')[0] || '';
+  var lines = [];
+  lines.push('Bonjour '+prenom+',');
+  lines.push('');
+  lines.push('Voici ton bilan mensuel Greaz'+(c.vehicle?(' pour ta '+c.vehicle):'')+' :');
+  lines.push('');
+  lines.push('📍 Kilométrage actuel : '+km.toLocaleString('fr-CA')+' km');
+  if(stats.sinceLast) lines.push('🚗 Depuis notre dernier appel ('+stats.sinceLast.days+' jours) : '+stats.sinceLast.km.toLocaleString('fr-CA')+' km parcourus');
+  if(stats.thisYear) lines.push('📅 Depuis le début de l\'année : environ '+stats.thisYear.km.toLocaleString('fr-CA')+' km parcourus');
+  if(!stats.sinceLast && !stats.thisYear) lines.push('📅 (Premier suivi — on pourra te dire combien de km tu parcoures par mois à partir du prochain bilan.)');
+  lines.push('');
+  lines.push('🔍 Problèmes constatés lors de notre appel :');
+  lines.push(opts.problems ? opts.problems : 'Aucun problème rapporté — tout semble correct.');
+  lines.push('');
+  if(plan.length){
+    lines.push('🔔 Rappels d\'entretien selon ton kilométrage :');
+    plan.forEach(function(it){
+      lines.push('• '+it.nom+' — '+(it.status==='due' ? 'rendu là' : 'bientôt')+' (vers '+Number(it.nextDue).toLocaleString('fr-CA')+' km)');
+    });
+  } else {
+    lines.push('🔔 Rappels d\'entretien : rien d\'urgent selon ton kilométrage actuel.');
+  }
+  lines.push('');
+  var adviceList = (opts.advice||[]).slice();
+  if(opts.extraAdvice) adviceList.push(opts.extraAdvice);
+  if(adviceList.length){
+    lines.push('💡 Conseils de l\'équipe Greaz :');
+    adviceList.forEach(function(a){ lines.push('• '+a); });
+    lines.push('');
+  }
+  lines.push('Merci de faire confiance à Greaz pour ton auto. N\'hésite pas à nous écrire si tu as des questions !');
+  lines.push('');
+  lines.push('— L\'équipe Greaz');
+  return lines.join('\n');
+}
+
+function gatherBilanForm(){
+  var kmEl = document.getElementById('bl-km');
+  var problemsEl = document.getElementById('bl-problems');
+  var extraEl = document.getElementById('bl-extra');
+  var advice = Array.prototype.slice.call(document.querySelectorAll('.bilan-advice-chk:checked')).map(function(el){
+    var found = BILAN_ADVICE_CHIPS.find(function(a){ return a.id===el.value; });
+    return found ? found.text : '';
+  }).filter(Boolean);
+  return {
+    km: Number((kmEl&&kmEl.value)||0),
+    problems: ((problemsEl&&problemsEl.value)||'').trim(),
+    advice: advice,
+    extraAdvice: ((extraEl&&extraEl.value)||'').trim(),
+  };
+}
+
+function updateBilanPreview(sk){
+  var c = _crmClients.find(function(x){ return crmSafeKey(x)===sk; });
+  var box = document.getElementById('bl-preview');
+  if(!c || !box) return;
+  box.textContent = composeBilanText(c, gatherBilanForm());
+}
+
+function closeBilanModal(){ var m = document.getElementById('bilan-modal'); if(m) m.remove(); }
+
+function openBilanModal(sk){
+  var c = _crmClients.find(function(x){ return crmSafeKey(x)===sk; });
+  if(!c) return;
+  if(!c.email){ alert('Ce client n\'a pas de courriel enregistré — impossible d\'envoyer un bilan.'); return; }
+  var modal = document.createElement('div');
+  modal.id = 'bilan-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(23,26,32,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;overflow-y:auto';
+  var chipsHtml = BILAN_ADVICE_CHIPS.map(function(a){
+    return '<label style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;font-size:12.5px;color:#374151;cursor:pointer">'
+      +'<input type="checkbox" class="bilan-advice-chk" value="'+a.id+'" '+(a.def?'checked':'')+' onchange="updateBilanPreview(\''+sk+'\')" style="margin-top:3px">'
+      +'<span>'+a.text+'</span></label>';
+  }).join('');
+  modal.innerHTML = '<div style="background:white;border-radius:18px;padding:1.75rem;max-width:520px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">'
+    +'<h3 style="font-size:17px;font-weight:800;margin-bottom:4px">📨 Bilan mensuel — '+c.name+'</h3>'
+    +'<p style="font-size:12.5px;color:#6B7280;margin-bottom:1.1rem">À remplir pendant ton appel. Le courriel partira vers <b>'+c.email+'</b>.</p>'
+
+    +'<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Nouveau kilométrage</label>'
+    +'<input type="number" id="bl-km" value="'+(c.km||'')+'" oninput="updateBilanPreview(\''+sk+'\')" style="width:100%;padding:11px 13px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:14px;font-family:inherit;box-sizing:border-box"></div>'
+
+    +'<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:6px">Problèmes constatés / rapportés par le client</label>'
+    +'<textarea id="bl-problems" rows="3" oninput="updateBilanPreview(\''+sk+'\')" placeholder="Ex. léger bruit au freinage, voyant moteur allumé..." style="width:100%;padding:11px 13px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:13.5px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea></div>'
+
+    +'<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:4px">💡 Conseils à inclure</div>'
+    + chipsHtml
+    +'<textarea id="bl-extra" rows="2" oninput="updateBilanPreview(\''+sk+'\')" placeholder="Autre conseil personnalisé (optionnel)..." style="width:100%;margin-top:6px;padding:9px 11px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:12.5px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea></div>'
+
+    +'<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">Aperçu du courriel</div>'
+    +'<div id="bl-preview" style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:9px;padding:12px 14px;font-size:12px;color:#374151;white-space:pre-wrap;max-height:220px;overflow-y:auto;font-family:monospace"></div></div>'
+
+    +'<div id="bl-err" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:9px 12px;border-radius:8px;font-size:12.5px;margin-bottom:10px"></div>'
+
+    +'<div style="display:flex;gap:9px">'
+    +'<button onclick="sendBilanEmail(\''+sk+'\')" id="bl-send-btn" style="flex:1;padding:13px;background:#059669;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">📤 Envoyer le bilan par courriel</button>'
+    +'<button onclick="closeBilanModal()" style="padding:13px 18px;background:#F3F4F6;color:#6B7280;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Annuler</button>'
+    +'</div>'
+    +'</div>';
+  document.body.appendChild(modal);
+  modal.addEventListener('click', function(e){ if(e.target===modal) closeBilanModal(); });
+  updateBilanPreview(sk);
+}
+
+async function sendBilanEmail(sk){
+  var c = _crmClients.find(function(x){ return crmSafeKey(x)===sk; });
+  if(!c) return;
+  var errEl = document.getElementById('bl-err');
+  var btn = document.getElementById('bl-send-btn');
+  errEl.style.display = 'none';
+  var data = gatherBilanForm();
+  if(!data.km || data.km <= 0){ errEl.textContent = 'Entre le kilométrage actuel du véhicule.'; errEl.style.display='block'; return; }
+  if(!c.email){ errEl.textContent = 'Ce client n\'a pas de courriel enregistré.'; errEl.style.display='block'; return; }
+  if(EJS_TEMPLATE_BILAN === 'COLLE_TON_TEMPLATE_ID_ICI'){ errEl.textContent = 'Le template EmailJS du bilan n\'est pas encore configuré (EJS_TEMPLATE_BILAN dans le code) — crée-le sur EmailJS et colle son ID.'; errEl.style.display='block'; return; }
+  btn.disabled = true; btn.textContent = '⏳ Envoi...';
+  var bodyText = composeBilanText(c, data);
+  try {
+    await emailjs.send(EJS_SERVICE, EJS_TEMPLATE_BILAN, {
+      to_email: c.email,
+      client_name: c.name || '',
+      subject: 'Ton bilan mensuel Greaz 🚗',
+      message: bodyText,
+    });
+    var log = bilanKmLog(sk).concat([{ km:data.km, date:new Date().toISOString() }]);
+    var bilans = ((_crmInternal[sk]&&_crmInternal[sk].bilans)||[]).concat([{
+      date: new Date().toISOString(), km:data.km, problems:data.problems, by:(currentAdmin&&currentAdmin.email)||'',
+    }]);
+    await db.collection('crm_client_internal').doc(sk).set({ km_log: log, bilans: bilans }, { merge:true });
+    _crmInternal[sk] = Object.assign({}, _crmInternal[sk], { km_log: log, bilans: bilans });
+    closeBilanModal();
+    alert('Bilan envoyé à '+c.email+' ✅');
+    buildCRM(); // recharge pour recalculer les rappels avec le nouveau kilométrage
+  } catch(e){
+    errEl.textContent = 'Erreur d\'envoi : '+(e.text||e.message||e);
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = '📤 Envoyer le bilan par courriel';
+  }
+}
+
+function renderClientBilanSection(c){
+  var sk = crmSafeKey(c);
+  var internal = _crmInternal[sk] || {};
+  var bilans = internal.bilans || [];
+  var last = bilans.length ? bilans[bilans.length-1] : null;
+  var lastStr = last ? new Date(last.date).toLocaleDateString('fr-CA',{day:'numeric',month:'short',year:'numeric'}) : null;
+  return "<div style='margin-top:14px'><div class='il' style='margin-bottom:8px'>📨 Bilan mensuel</div>"
+    +(lastStr ? "<div style='font-size:12px;color:var(--muted);margin-bottom:8px'>Dernier bilan envoyé le "+lastStr+" ("+Number(last.km).toLocaleString('fr-CA')+" km).</div>" : "<div style='font-size:12px;color:var(--muted);margin-bottom:8px'>Aucun bilan envoyé pour l'instant.</div>")
+    +"<button class='abtn' style='background:#EEF1FF;border-color:#BFDBFE;color:#0F2ACC' onclick=\"openBilanModal('"+sk+"')\">📨 Préparer le bilan mensuel</button>"
+    +"</div>";
 }
 
 /* ── Gestion des tâches récurrentes (modal, liste globale) ── */
