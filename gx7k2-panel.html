@@ -642,7 +642,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
     <!-- MEMBRES / ABONNEMENTS -->
     <div class="panel" id="panel-membres">
       <div style="background:#ECFDF5;border:1px solid #6EE7B7;border-radius:10px;padding:12px 14px;font-size:12.5px;color:#065F46;line-height:1.6;margin-bottom:1rem">
-        <b>💳 Gestion des membres Greaz Collection.</b> Quand quelqu'un paie sur Square (14,99$/mois), tu vois son courriel dans ton tableau Square. Cherche-le ici, pis clique <b>Activer</b>. Le compte devient membre pis ses demandes passent sans paywall. Si un abonnement est annulé, clique <b>Désactiver</b>.
+        <b>💳 Gestion des membres Greaz Collection.</b> Quand quelqu'un paie sur Stripe (14,99$/mois), tu vois son courriel dans ton tableau Stripe. Cherche-le ici, pis clique <b>Activer</b>. Le compte devient membre pis ses demandes passent sans paywall. Si un abonnement est annulé, clique <b>Désactiver</b>.
       </div>
 
       <!-- Compteur d'économies affiché sur la landing -->
@@ -1044,6 +1044,8 @@ function uploadViaFunction(file, purpose, targetUid, extra){
 }
 
 var _leads=[], _mecs=[], _rdvs=[], _pendingMecs=[], _directory=[], _claims=[], _affiliates=[];
+var _obdDevices = {};   // deviceId -> {client_uid, label}
+var _obdReadingsRaw = []; // dernières lectures OBD (toutes boîtiers confondus), les plus récentes en premier
 var _leadsFilter="all", _mecsFilter="todo", _rdvFilter="all";
 var _leadsSearch="", _mecsSearch="", _rdvSearch="";
 
@@ -1520,7 +1522,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
 /* ══════════════════════════════════════════
    MEMBRES / ABONNEMENTS GREAZ COLLECTION
-   Active/désactive manuellement les membres après paiement Square.
+   Active/désactive manuellement les membres après paiement Stripe.
    ══════════════════════════════════════════ */
 var _mbrClients = [];
 var _mbrFilter = 'all';
@@ -2575,6 +2577,20 @@ async function buildCRM(){
     var intSnap = await db.collection('crm_client_internal').get();
     _crmInternal = {};
     intSnap.docs.forEach(function(d){ _crmInternal[d.id] = d.data(); });
+    // Boîtiers OBD associés + leurs dernières lectures (voir section OBD plus
+    // bas) — on charge tout une fois ici plutôt qu'une requête par fiche.
+    try {
+      var devSnap = await db.collection('obd_devices').get();
+      _obdDevices = {};
+      devSnap.docs.forEach(function(d){ _obdDevices[d.id] = Object.assign({id:d.id}, d.data()); });
+      var readSnap = await db.collection('obd_readings').orderBy('synced_at','desc').limit(200).get();
+      _obdReadingsRaw = readSnap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    } catch(eObd){
+      // Pas bloquant — le répertoire reste utilisable même si la collection OBD
+      // n'existe pas encore ou n'est pas accessible.
+      console.log('OBD non chargé:', eObd.message);
+      _obdDevices = {}; _obdReadingsRaw = [];
+    }
   } catch(e){
     listEl.innerHTML = '<div class="loading">⚠️ '+e.message+'</div>';
     return;
@@ -2695,6 +2711,17 @@ async function buildCRM(){
     var internal = _crmInternal[crmSafeKey(c)] || {};
     c.taskCompletions = internal.task_completions || {};
     c.internalNotes = internal.notes || [];
+    // Boîtier OBD associé à ce client (voir renderClientObdSection) + sa
+    // dernière lecture reçue (device_id -> client_uid dans obd_devices,
+    // puis la lecture la plus récente pour ce device dans obd_readings).
+    c.obdDeviceId = null; c.obdLatest = null;
+    if(c.uid){
+      var devId = Object.keys(_obdDevices).find(function(id){ return _obdDevices[id].client_uid === c.uid; });
+      if(devId){
+        c.obdDeviceId = devId;
+        c.obdLatest = _obdReadingsRaw.find(function(r){ return r.device_id === devId; }) || null;
+      }
+    }
   });
   document.getElementById('tbcrm').textContent = _crmClients.length;
   renderCRMStats();
@@ -2853,6 +2880,7 @@ function crmCard(c){
     + renderClientTasksSection(c)
     + renderClientNotesSection(c)
     + renderClientBilanSection(c)
+    + renderClientObdSection(c)
     // Actions pour joindre le client
     +"<div class='action-btns' style='margin-top:12px'>"
     +(c.phone?"<a href='tel:"+phoneClean+"' class='abtn abtn-call'>📞 Appeler</a><a href='sms:"+phoneClean+"' class='abtn abtn-sms'>💬 SMS</a>":"")
@@ -3179,6 +3207,83 @@ function renderClientBilanSection(c){
     +(lastStr ? "<div style='font-size:12px;color:var(--muted);margin-bottom:8px'>Dernier bilan envoyé le "+lastStr+" ("+Number(last.km).toLocaleString('fr-CA')+" km).</div>" : "<div style='font-size:12px;color:var(--muted);margin-bottom:8px'>Aucun bilan envoyé pour l'instant.</div>")
     +"<button class='abtn' style='background:#EEF1FF;border-color:#BFDBFE;color:#0F2ACC' onclick=\"openBilanModal('"+sk+"')\">📨 Préparer le bilan mensuel</button>"
     +"</div>";
+}
+
+/* ══════════ BOÎTIER OBD — lecture continue (codes de panne, etc.) ══════════
+   Le boîtier branché dans l'auto (voir obd-esp32/greaz_obd_esp32.ino) envoie
+   ses lectures dans la collection obd_readings (device_id + codes de panne +
+   quelques données moteur), dès qu'il retrouve un WiFi connu. On associe un
+   device_id à un client ici (obd_devices), et buildCRM() va chercher la
+   dernière lecture pour l'afficher sur sa fiche — pas de requête par carte,
+   tout est chargé une fois avec le reste du répertoire. */
+function renderClientObdSection(c){
+  if(!c.uid) return ''; // le boîtier ne peut être associé qu'à un compte Greaz
+  var sk = crmSafeKey(c);
+  if(!c.obdDeviceId){
+    return "<div style='margin-top:14px'><div class='il' style='margin-bottom:8px'>📡 Boîtier OBD</div>"
+      +"<div style='font-size:12px;color:var(--muted);margin-bottom:8px'>Aucun boîtier associé à ce client.</div>"
+      +"<button class='abtn' style='background:#EEF1FF;border-color:#BFDBFE;color:#0F2ACC' onclick=\"openLinkObdDevice('"+sk+"')\">🔗 Associer un boîtier</button>"
+      +"</div>";
+  }
+  var r = c.obdLatest;
+  if(!r){
+    return "<div style='margin-top:14px'><div class='il' style='margin-bottom:8px'>📡 Boîtier OBD</div>"
+      +"<div style='font-size:12px;color:var(--muted);margin-bottom:8px'>Boîtier associé (<code>"+c.obdDeviceId+"</code>) — en attente de sa première synchro.</div>"
+      +"<button class='abtn abtn-del' onclick=\"unlinkObdDevice('"+sk+"')\">✕ Retirer le boîtier</button>"
+      +"</div>";
+  }
+  var dt = (r.synced_at && r.synced_at.toDate) ? r.synced_at.toDate() : null;
+  var ago = dt ? obdTimeAgo(dt) : '—';
+  var codes = r.dtc_codes || [];
+  var codesHtml = codes.length
+    ? codes.map(function(code){ return "<span style='display:inline-block;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;border-radius:7px;padding:2px 9px;font-size:11.5px;font-weight:700;font-family:monospace;margin:0 5px 5px 0'>"+code+"</span>"; }).join('')
+    : "<span style='font-size:12px;color:#15803D;font-weight:600'>✓ Aucun code de panne détecté</span>";
+  var statusBg = codes.length ? '#FEF2F2' : '#F0FDF4';
+  var statusBorder = codes.length ? '#FECACA' : '#86EFAC';
+  var extras = [];
+  if(r.coolant_c !== undefined && r.coolant_c !== null) extras.push('🌡️ '+r.coolant_c+'°C');
+  if(r.battery_v !== undefined && r.battery_v !== null) extras.push('🔋 '+r.battery_v+'V');
+  return "<div style='margin-top:14px'><div class='il' style='margin-bottom:8px;display:flex;align-items:center;justify-content:space-between'>📡 Boîtier OBD <span style='color:var(--blue);cursor:pointer;font-weight:600;font-size:11px' onclick=\"unlinkObdDevice('"+sk+"')\">✕ Retirer</span></div>"
+    +"<div style='background:"+statusBg+";border:1px solid "+statusBorder+";border-radius:10px;padding:10px 13px'>"
+    +"<div style='font-size:11px;color:#6B7280;margin-bottom:6px'>Dernière synchro : "+ago+(extras.length?' · '+extras.join(' · '):'')+"</div>"
+    +codesHtml
+    +"</div></div>";
+}
+function obdTimeAgo(dt){
+  var diffMin = Math.round((Date.now()-dt.getTime())/60000);
+  if(diffMin < 1) return 'à l\'instant';
+  if(diffMin < 60) return 'il y a '+diffMin+' min';
+  var diffH = Math.round(diffMin/60);
+  if(diffH < 48) return 'il y a '+diffH+' h';
+  var diffD = Math.round(diffH/24);
+  return 'il y a '+diffD+' j';
+}
+function openLinkObdDevice(skey){
+  var c = _crmClients.find(function(x){ return x.key.replace(/[^a-z0-9]/gi,'') === skey; });
+  if(!c) return;
+  var id = prompt('ID du boîtier à associer à '+c.name+' (l\'identifiant programmé dans le boîtier, ex. GZ-OBD-01) :');
+  if(!id) return;
+  id = id.trim();
+  if(!id) return;
+  db.collection('obd_devices').doc(id).set({ client_uid: c.uid, label: c.name, linked_at: firebase.firestore.FieldValue.serverTimestamp() }, { merge:true }).then(function(){
+    _obdDevices[id] = { id:id, client_uid: c.uid, label: c.name };
+    c.obdDeviceId = id;
+    c.obdLatest = _obdReadingsRaw.find(function(r){ return r.device_id === id; }) || null;
+    renderCRM();
+    reopenCard(skey);
+  }).catch(function(e){ alert('Erreur : '+e.message); });
+}
+function unlinkObdDevice(skey){
+  var c = _crmClients.find(function(x){ return x.key.replace(/[^a-z0-9]/gi,'') === skey; });
+  if(!c || !c.obdDeviceId) return;
+  if(!confirm('Retirer le boîtier OBD de '+c.name+' ?')) return;
+  var id = c.obdDeviceId;
+  db.collection('obd_devices').doc(id).delete().then(function(){
+    delete _obdDevices[id];
+    c.obdDeviceId = null; c.obdLatest = null;
+    renderCRM();
+    reopenCard(skey);
+  }).catch(function(e){ alert('Erreur : '+e.message); });
 }
 
 /* ── Gestion des tâches récurrentes (modal, liste globale) ── */
