@@ -481,6 +481,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
     <div class="tab" id="tab-market" onclick="switchTab('market')">💹 Prix marché</div>
     <div class="tab" id="tab-rentals" onclick="switchTab('rentals')">🚗💰 Location auto <span class="tbadge" id="tbrentals" style="background:#00875A">0</span></div>
     <div class="tab" id="tab-annuaire" onclick="switchTab('annuaire')">📇 Annuaire <span class="tbadge purple" id="tb4">0</span></div>
+    <div class="tab" id="tab-flottes" onclick="switchTab('flottes')">🚚 Flottes <span class="tbadge" id="tbflottes" style="background:#4568D6">0</span></div>
     <div class="tab" id="tab-claims" onclick="switchTab('claims')">✋ Revendications <span class="tbadge" id="tb5" style="background:#00C26F">0</span></div>
     <div class="tab" id="tab-jobs" onclick="switchTab('jobs')">🔧 Assignations <span class="tbadge" id="tbjobs" style="background:#F59E0B">0</span></div>
     <div class="tab" id="tab-workflow" onclick="switchTab('workflow')">🗂 Workflow <span class="tbadge" id="tb8" style="background:#F59E0B">0</span></div>
@@ -724,6 +725,20 @@ body{font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--ink)
         <span id="dir-count" style="font-size:12px;color:var(--muted);white-space:nowrap"></span>
       </div>
       <div id="directory-list"></div>
+    </div>
+
+    <!-- FLOTTES -->
+    <div class="panel" id="panel-flottes">
+      <div class="toolbar">
+        <button class="tool-btn" onclick="loadFlottesAdmin()">🔄 Rafraîchir</button>
+        <button class="tool-btn green" onclick="addFleetPrompt()">🚚 Nouvelle flotte (client)</button>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.6">
+        Gère les clients « gestionnaire de flotte » : chaque entreprise a un compte Pro (le gestionnaire) et un ou plusieurs chauffeurs,
+        chacun avec son propre accès au tableau de bord <b>greaz-flotte.html</b>. Même logique que les comptes Pro mécaniciens : tu crées les comptes manuellement ici,
+        la personne reçoit son courriel + mot de passe de ta part.
+      </div>
+      <div id="flottes-list"><div class="loading"><span class="spinner"></span>Chargement...</div></div>
     </div>
 
     <div class="panel" id="panel-claims">
@@ -1499,6 +1514,7 @@ function switchTab(t){
   if(t==='market') loadMarketPrices();
   if(t==='rentals') loadRentalLeads();
   if(t==='traffic') loadTrafficData(_trafficRangeDays);
+  if(t==='flottes') loadFlottesAdmin();
 }
 
 /* Met à jour les indicateurs de défilement des onglets (dégradés gauche/droite) */
@@ -7301,6 +7317,209 @@ async function createProAccount(garageId){
   } catch(e){
     var msg = e.message;
     if(e.code === 'auth/email-already-in-use') msg = 'Ce courriel a déjà un compte Firebase.\n\nSi c\'est bien son compte, il faut lier son UID manuellement dans Firestore (champ owner_uid).';
+    if(e.code === 'auth/weak-password') msg = 'Mot de passe trop faible (min. 6 caractères).';
+    alert('Erreur : '+msg);
+  }
+}
+
+/* ══════════════════════════════════════════
+   GESTION DES FLOTTES (clients "gestionnaire de flotte")
+   Collections : fleets, fleet_vehicles, fleet_drivers, fleet_invoices
+   Même logique que mechanics_public / garage_staff, mais pour les
+   entreprises qui gèrent plusieurs camions. Portail : greaz-flotte.html
+   ══════════════════════════════════════════ */
+var _fleets = [], _fleetVehicles = [], _fleetDrivers = [];
+
+async function loadFlottesAdmin(){
+  var el = document.getElementById('flottes-list');
+  if(el) el.innerHTML = '<div class="loading"><span class="spinner"></span>Chargement...</div>';
+  try {
+    var fSnap = await db.collection('fleets').get();
+    _fleets = fSnap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    var vSnap = await db.collection('fleet_vehicles').get();
+    _fleetVehicles = vSnap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    var dSnap = await db.collection('fleet_drivers').get();
+    _fleetDrivers = dSnap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    var badge = document.getElementById('tbflottes');
+    if(badge) badge.textContent = _fleets.length;
+    renderFlottesAdmin();
+  } catch(e){
+    if(el) el.innerHTML = '<div style="padding:1.5rem;color:#dc2626">⚠️ '+e.message+'</div>';
+  }
+}
+
+function renderFlottesAdmin(){
+  var el = document.getElementById('flottes-list');
+  if(!_fleets.length){
+    el.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:1.5rem 0;text-align:center">Aucune flotte encore. Clique « Nouvelle flotte (client) » pour en ajouter une.</div>';
+    return;
+  }
+  el.innerHTML = _fleets.map(function(f){
+    var vehicles = _fleetVehicles.filter(function(v){ return v.fleet_id===f.id; });
+    var drivers = _fleetDrivers.filter(function(d){ return d.fleet_id===f.id; });
+    return "<div class='directory-card'>"
+      +"<div class='directory-top'><div>"
+      +"<div class='directory-name'>🚚 "+(f.name||'—')+"</div>"
+      +"<div class='directory-meta'>"+(f.phone?'📞 '+f.phone:'')+(f.contact_email?' · ✉️ '+f.contact_email:'')
+      +" · "+vehicles.length+" camion(s) · "+drivers.length+" chauffeur(s)</div>"
+      +"</div></div>"
+      +"<div class='directory-actions' style='flex-wrap:wrap'>"
+      +(f.owner_uid
+        ? "<span class='abtn' style='background:#ECFDF5;border-color:#6EE7B7;color:#059669;font-size:11px;font-weight:700;cursor:default'>✅ Compte Pro (gestionnaire) actif</span>"
+        : "<button class='abtn' style='background:#FFF7ED;border-color:#FDBA74;color:#C2410C;font-size:11px;font-weight:700' onclick='createFleetProAccount(\""+f.id+"\")'>🔑 Créer compte gestionnaire</button>")
+      +"<button class='abtn' style='background:var(--bluelt);border-color:var(--bluebdr);color:var(--blue2);font-size:11px' onclick='addFleetVehiclePrompt(\""+f.id+"\")'>🚚 + Camion</button>"
+      +"<button class='abtn' style='background:#EEF2FF;border-color:#A5B4FC;color:#4338CA;font-size:11px;font-weight:700' onclick='createFleetDriverAccount(\""+f.id+"\")'>👷 + Chauffeur</button>"
+      +"<button class='abtn abtn-del' style='font-size:11px' onclick='deleteFleet(\""+f.id+"\")'>🗑 Retirer</button>"
+      +"</div>"
+      +(vehicles.length ? "<div style='margin-top:.6rem;font-size:12px;color:var(--muted)'>"
+        + vehicles.map(function(v){
+            var drv = drivers.find(function(d){ return d.vehicle_id===v.id; });
+            return "🚚 "+(v.label||'Camion')+(v.plate?' ('+v.plate+')':'')+" — "+(v.km||0).toLocaleString('fr-CA')+" km"+(drv?" · 👤 "+drv.name:" · <span style='color:#C2410C'>aucun chauffeur</span>");
+          }).join("<br>")
+        +"</div>" : "")
+      +"</div>";
+  }).join('');
+}
+
+async function addFleetPrompt(){
+  var name = prompt('Nom de l\'entreprise (client flotte) :');
+  if(!name || !name.trim()) return;
+  var phone = prompt('Téléphone de l\'entreprise (optionnel) :') || '';
+  var email = prompt('Courriel de contact de l\'entreprise (optionnel, différent du login) :') || '';
+  try {
+    await db.collection('fleets').add({
+      name: name.trim(), phone: phone.trim(), contact_email: email.trim(), address: '',
+      created_at: firebase.firestore.FieldValue.serverTimestamp(), created_by: currentAdmin.email,
+    });
+    alert('✅ Flotte « '+name+' » créée.\n\nProchaine étape : clique « 🔑 Créer compte gestionnaire » pour lui donner un accès, puis « 🚚 + Camion » et « 👷 + Chauffeur ».');
+    loadFlottesAdmin();
+  } catch(e){ alert('Erreur : ' + e.message); }
+}
+
+async function deleteFleet(fleetId){
+  if(!confirm('Retirer cette flotte ? Ses camions, chauffeurs et factures resteront dans la base mais ne seront plus listés ici.')) return;
+  try { await db.collection('fleets').doc(fleetId).delete(); loadFlottesAdmin(); }
+  catch(e){ alert('Erreur : ' + e.message); }
+}
+
+/* Compte Pro du gestionnaire de flotte — même mécanique que createProAccount() */
+async function createFleetProAccount(fleetId){
+  var f = _fleets.find(function(x){ return x.id===fleetId; });
+  if(!f) return;
+  if(f.owner_uid){ alert(f.name+' a déjà un compte gestionnaire.'); return; }
+
+  var email = prompt('Créer un compte gestionnaire pour :\n'+f.name+'\n\nCourriel du gestionnaire :\n(c\'est avec ça qu\'il se connectera)', f.contact_email || '');
+  if(!email || email.indexOf('@')===-1){ if(email!==null) alert('Courriel invalide.'); return; }
+
+  var pass = prompt('Mot de passe temporaire (min. 6 caractères) :\n\nTu vas le lui communiquer, il pourra le changer.', 'greaz'+Math.floor(Math.random()*9000+1000));
+  if(!pass) return;
+  if(pass.length < 6){ alert('Mot de passe trop court (min. 6 caractères).'); return; }
+
+  try {
+    var cfg = firebase.app().options;
+    var secondary;
+    try { secondary = firebase.app('secondary'); }
+    catch(e){ secondary = firebase.initializeApp(cfg, 'secondary'); }
+
+    var cred = await secondary.auth().createUserWithEmailAndPassword(email, pass);
+    var uid = cred.user.uid;
+    await secondary.auth().signOut();
+
+    await db.collection('fleets').doc(fleetId).update({
+      owner_uid: uid, login_email: email,
+      pro_created_at: firebase.firestore.FieldValue.serverTimestamp(), pro_created_by: currentAdmin.email,
+    });
+
+    alert('✅ Compte gestionnaire créé !\n\n'
+      +'Entreprise : '+f.name+'\n'
+      +'Courriel : '+email+'\n'
+      +'Mot de passe : '+pass+'\n\n'
+      +'📎 Envoie-lui ce lien :\n'
+      +'https://greaz-dash.github.io/panel/greaz-flotte.html\n\n'
+      +'Il verra tous ses camions, chauffeurs et factures.');
+    loadFlottesAdmin();
+  } catch(e){
+    var msg = e.message;
+    if(e.code === 'auth/email-already-in-use') msg = 'Ce courriel a déjà un compte Firebase.';
+    if(e.code === 'auth/weak-password') msg = 'Mot de passe trop faible (min. 6 caractères).';
+    alert('Erreur : '+msg);
+  }
+}
+
+/* Ajoute un camion à la flotte */
+async function addFleetVehiclePrompt(fleetId){
+  var f = _fleets.find(function(x){ return x.id===fleetId; });
+  if(!f) return;
+  var label = prompt('Nom / identifiant du camion (ex: Camion 3 — Ford F-150) :');
+  if(!label || !label.trim()) return;
+  var make = prompt('Marque (optionnel) :') || '';
+  var model = prompt('Modèle (optionnel) :') || '';
+  var year = parseInt(prompt('Année (optionnel) :') || '');
+  var plate = prompt('Plaque (optionnel) :') || '';
+  var km = parseInt(prompt('Kilométrage actuel :') || '0') || 0;
+  try {
+    await db.collection('fleet_vehicles').add({
+      fleet_id: fleetId, label: label.trim(), make: make.trim(), model: model.trim(),
+      year: isNaN(year) ? null : year, plate: plate.trim(), km: km, motor: 'g', usage: 'mixte', notes: '',
+      created_at: firebase.firestore.FieldValue.serverTimestamp(),
+      km_updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    alert('✅ Camion « '+label+' » ajouté à '+f.name+'.');
+    loadFlottesAdmin();
+  } catch(e){ alert('Erreur : ' + e.message); }
+}
+
+/* Compte chauffeur — même mécanique que createStaffAccount(), + assignation d'un camion */
+async function createFleetDriverAccount(fleetId){
+  var f = _fleets.find(function(x){ return x.id===fleetId; });
+  if(!f) return;
+  var vehicles = _fleetVehicles.filter(function(v){ return v.fleet_id===fleetId; });
+  if(!vehicles.length){ alert('Ajoute d\'abord au moins un camion à cette flotte (bouton « 🚚 + Camion »).'); return; }
+
+  var name = prompt('Nom du chauffeur pour '+f.name+' :');
+  if(!name || !name.trim()) return;
+
+  var vehList = vehicles.map(function(v,i){ return (i+1)+'. '+v.label+(v.plate?' ('+v.plate+')':''); }).join('\n');
+  var choice = parseInt(prompt('Quel camion lui assigner ?\n\n'+vehList+'\n\nEntre le numéro :'));
+  if(isNaN(choice) || choice < 1 || choice > vehicles.length){ alert('Choix invalide.'); return; }
+  var vehicle = vehicles[choice-1];
+
+  var email = prompt('Courriel du chauffeur :\n(c\'est avec ça qu\'il se connectera)');
+  if(!email || email.indexOf('@')===-1){ if(email!==null) alert('Courriel invalide.'); return; }
+
+  var pass = prompt('Mot de passe temporaire (min. 6 caractères) :', 'greaz'+Math.floor(Math.random()*9000+1000));
+  if(!pass) return;
+  if(pass.length < 6){ alert('Mot de passe trop court (min. 6 caractères).'); return; }
+
+  try {
+    var cfg = firebase.app().options;
+    var secondary;
+    try { secondary = firebase.app('secondary'); }
+    catch(e){ secondary = firebase.initializeApp(cfg, 'secondary'); }
+
+    var cred = await secondary.auth().createUserWithEmailAndPassword(email, pass);
+    var uid = cred.user.uid;
+    await secondary.auth().signOut();
+
+    await db.collection('fleet_drivers').doc(uid + '_' + fleetId).set({
+      uid: uid, fleet_id: fleetId, fleet_name: f.name || '', vehicle_id: vehicle.id,
+      name: name.trim(), email: email, phone: '',
+      created_at: firebase.firestore.FieldValue.serverTimestamp(), created_by: currentAdmin.email,
+    });
+
+    alert('✅ Compte chauffeur créé !\n\n'
+      +'Chauffeur : '+name+'\n'
+      +'Camion assigné : '+vehicle.label+'\n'
+      +'Entreprise : '+f.name+'\n'
+      +'Courriel : '+email+'\n'
+      +'Mot de passe : '+pass+'\n\n'
+      +'📎 Envoie-lui ce lien :\n'
+      +'https://greaz-dash.github.io/panel/greaz-flotte.html\n\n'
+      +'Il verra seulement son camion, son kilométrage et ses factures.');
+    loadFlottesAdmin();
+  } catch(e){
+    var msg = e.message;
+    if(e.code === 'auth/email-already-in-use') msg = 'Ce courriel a déjà un compte Firebase.';
     if(e.code === 'auth/weak-password') msg = 'Mot de passe trop faible (min. 6 caractères).';
     alert('Erreur : '+msg);
   }
